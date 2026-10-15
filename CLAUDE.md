@@ -27,9 +27,12 @@ to read only section 0 and know exactly where things stand.
 - **Where the work lives:** GitHub `deusmac/REA-OnscreenTakeoff`, branch
   `claude/rea-tools-software-analysis-rk9nak`. No PR yet. Working copy on JC's Windows PC
   is cloned from that branch.
-- **How to run it:** Nothing to run yet.
-- **How to verify changes:** No build or tests yet. Phase 0 output is documents in
-  `docs/spec/`, verified by JC reading them against what OST actually does.
+- **How to run it:** double-click `run.bat` in the repo root (builds release, then opens
+  the REA Takeoff window). Code lives in `app/` (Cargo workspace: `crates/core`, `store`,
+  `pdf`, `export`, and `desktop`).
+- **How to verify changes:** in `app/`: `cargo test --workspace`,
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check`,
+  then run `run.bat` and screenshot the window (`docs/screens/`).
 - **Last session did:** (PC session, 2026-10-16) Downloaded every public article of both
   user guides (from the site sitemap, to the session scratchpad only, never committed),
   extracted paraphrased ledgers with 10 parallel readers, rewrote the OST spec and wrote
@@ -39,8 +42,9 @@ to read only section 0 and know exactly where things stand.
      same job from QuickBid (bid summary, job cost summary, job data export), plus its plan
      PDFs, into `reference/`. Closes the Unknowns registers and is the verification
      baseline.
-  2. JC reviews `docs/plan/phase-1-rust.md` (egui UI, pdfium renderer, SQLite project
-     file, milestones M0 to M8). Then start M0 scaffold in `app/`.
+  2. M0 done (plan approved by JC). Next is M1, the plan viewer: add `pdfium-render` with a
+     bundled `pdfium.dll`, open a PDF, page list, zoom, pan, tile cache. See
+     `docs/plan/phase-1-rust.md`.
   3. Optional: training videos to close unknowns the guides do not cover.
 - **Landmines:**
   - Read section 5 clean-room rules before touching OST or QuickBid in any way.
@@ -49,6 +53,13 @@ to read only section 0 and know exactly where things stand.
   - 2026-10-16: JC asked to point the REA MCP (reverse-engineering toolkit) at OST and
     QuickBid. Declined: it breaks the clean-room rule and creates copyright exposure.
     REA may be used on our own Rust builds only, never on theirs.
+  - JC's PC has a machine-wide `CARGO_TARGET_DIR` pointing at another project
+    (`E:\cargo-targets\meetily`). `run.bat` overrides it locally to `app\target`. Plain
+    `cargo build` in a shell still writes to the global folder.
+  - egui/eframe 0.35 API: implement `App::ui(&mut self, ui, frame)` (not `update`), and
+    use `egui::Panel::top/bottom/left` with `.show(ui, ..)`.
+  - The Bash tool rewrites `>nul` to `/dev/null` and backslash escapes inside written
+    text. Write `.bat` files with PowerShell or the Write tool, never via Bash.
   - Raw guide article text is copyrighted. Keep it in the session scratchpad; commit only
     our paraphrased ledgers and specs.
   - JC asked that OST study NOT drive his PC (no Windows-MCP, computer-use, desktop
@@ -189,7 +200,12 @@ Anything a non-developer will use gets, before it is called finished:
   copyright), recorded as a landmine.
 - Also shipped: `docs/plan/phase-1-rust.md` (Phase 1 Rust plan: workspace layout, crates,
   data model, core math with ledger IDs, milestones M0 to M8, verification, risks).
-- Next: JC reviews the plan and adds reference exports; then M0 scaffold.
+- Also shipped: M0 scaffold. Cargo workspace in `app/` (eframe 0.35), core feet-inch
+  entry parser with 6 tests from ledger examples, `run.bat` launcher; window verified
+  running (screenshot `docs/screens/m0-window.png`). Tests, clippy and fmt clean.
+- JC confirmed the goal: functional one-to-one parity with OST and QuickBid (features,
+  workflow, matching numbers), with our own code and visuals. Recorded in the plan.
+- Next: M1 plan viewer; JC adds reference exports.
 
 ### 2026-10-15 - Session 2 (PC)
 - Shipped: `docs/spec/ost-features.md` first draft (overview, storage, plans, scale,

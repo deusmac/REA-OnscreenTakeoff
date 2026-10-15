@@ -4,6 +4,14 @@ Status: draft for JC review, 2026-10-16.
 Scope source: "Phase 1 MVP mapping" in `docs/spec/ost-features.md`.
 Toolchain on JC's PC: Rust 1.94.0, stable-x86_64-pc-windows-msvc.
 
+## 0. End goal
+
+Functional one-to-one parity with OST and QuickBid: every ledger behavior built, the same
+workflow (tabs, panels, tools, shortcuts, feet-inch entry), and quantities and bid totals
+that match their exports for the same job. Not copied: code, icons, artwork, help text,
+names, logos, or pixel-exact screens (clean-room rules, CLAUDE.md section 5). Phase 1 is
+the first slice of that target, not a reduced product.
+
 ## 1. Goal and definition of done
 
 A Windows desktop app where JC can:
@@ -165,7 +173,8 @@ Each milestone ends with a commit, a demo JC can run, and green tests. The riski
 - Release build, `REA Takeoff.bat` launcher and Desktop shortcut, one-page guide
   `docs/guide/takeoff-quickstart.md`, check on the smallest screen.
 
-Rough total: 18 to 22 working days of agent time, spread over sessions.
+Pace: roughly one working session per milestone (M0 takes minutes). The real limits are
+JC's hands-on feedback on drawing feel (M4, M5) and the reference exports (M7).
 
 ## 6. Verification approach
 
