@@ -39,7 +39,8 @@ to read only section 0 and know exactly where things stand.
      same job from QuickBid (bid summary, job cost summary, job data export), plus its plan
      PDFs, into `reference/`. Closes the Unknowns registers and is the verification
      baseline.
-  2. Write the Phase 1 build plan (Rust) from the MVP mapping in `ost-features.md`.
+  2. JC reviews `docs/plan/phase-1-rust.md` (egui UI, pdfium renderer, SQLite project
+     file, milestones M0 to M8). Then start M0 scaffold in `app/`.
   3. Optional: training videos to close unknowns the guides do not cover.
 - **Landmines:**
   - Read section 5 clean-room rules before touching OST or QuickBid in any way.
@@ -169,7 +170,7 @@ Anything a non-developer will use gets, before it is called finished:
 
 1. Reference job in `reference/` (OST and QuickBid exports of the same job plus plans).
 2. Close the Unknowns registers in both specs against the reference job.
-3. Phase 1 build plan in Rust from the MVP mapping in `docs/spec/ost-features.md`.
+3. Phase 1 build per `docs/plan/phase-1-rust.md` (plan drafted, awaiting JC review).
 4. Training videos as a second source for unknowns the guides leave open.
 
 ---
@@ -186,7 +187,9 @@ Anything a non-developer will use gets, before it is called finished:
   site sitemap was used instead. One reader pass hit the usage limit and was resumed. JC
   asked to use the REA MCP on OST and QuickBid binaries; declined (clean-room and
   copyright), recorded as a landmine.
-- Next: JC adds reference exports; then the Phase 1 Rust plan.
+- Also shipped: `docs/plan/phase-1-rust.md` (Phase 1 Rust plan: workspace layout, crates,
+  data model, core math with ledger IDs, milestones M0 to M8, verification, risks).
+- Next: JC reviews the plan and adds reference exports; then M0 scaffold.
 
 ### 2026-10-15 - Session 2 (PC)
 - Shipped: `docs/spec/ost-features.md` first draft (overview, storage, plans, scale,
