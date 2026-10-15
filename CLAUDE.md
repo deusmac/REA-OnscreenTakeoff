@@ -15,27 +15,41 @@ to read only section 0 and know exactly where things stand.
 
 - **Project:** A clean-room rebuild of the On-Screen Takeoff (OST) feature set, later joined
   by a QuickBid-style bidding module, in one application for JC's estimating work.
-- **Current phase:** Phase 0 (study) in progress. First draft of `docs/spec/ost-features.md`
-  is written; it has open questions that need JC's reference job exports to close.
+- **Current phase:** Phase 0 (study) nearly done. Both public user guides were read in full
+  (OST 286 articles, QuickBid 268). Specs: `docs/spec/ost-features.md` (second draft) and
+  `docs/spec/quickbid-features.md` (first draft). Evidence ledger with IDs in `docs/study/`.
+  Remaining gaps are in each spec's Unknowns register and need JC's reference exports.
+- **Stack:** Rust (JC's decision, 2026-10-16). Rust core for geometry, scale and quantity
+  math; PDF renderer and desktop UI to be chosen in the Phase 1 plan.
+- **Method (clean-room evidence loop):** ledger IDs per behavior, unknowns register,
+  black-box comparison of our exports against OST and QuickBid exports for the same job,
+  coverage score per phase. Inputs are public docs, videos and JC's exports only.
 - **Where the work lives:** GitHub `deusmac/REA-OnscreenTakeoff`, branch
   `claude/rea-tools-software-analysis-rk9nak`. No PR yet. Working copy on JC's Windows PC
   is cloned from that branch.
 - **How to run it:** Nothing to run yet.
 - **How to verify changes:** No build or tests yet. Phase 0 output is documents in
   `docs/spec/`, verified by JC reading them against what OST actually does.
-- **Last session did:** (PC session, 2026-10-15) Wrote the first OST feature spec from the
-  public user guide, video descriptions and a short partial look at the running app. Ends
-  with open questions and a Phase 1 MVP mapping.
+- **Last session did:** (PC session, 2026-10-16) Downloaded every public article of both
+  user guides (from the site sitemap, to the session scratchpad only, never committed),
+  extracted paraphrased ledgers with 10 parallel readers, rewrote the OST spec and wrote
+  the QuickBid spec. Ran an overlap check (no copied prose in committed docs).
 - **Next up (priority order):**
-  1. JC: export one real past job from OST (Summary and Estimate grids to Excel) plus its
-     plan PDFs into `reference/`. This closes most spec open questions and is the
-     verification baseline.
-  2. Write `docs/spec/quickbid-features.md` from public docs (lower priority).
-  3. Pick the stack and write the Phase 1 build plan from the MVP mapping in the spec.
+  1. JC: export one real past job from OST (Summary and Estimate grids to Excel) and the
+     same job from QuickBid (bid summary, job cost summary, job data export), plus its plan
+     PDFs, into `reference/`. Closes the Unknowns registers and is the verification
+     baseline.
+  2. Write the Phase 1 build plan (Rust) from the MVP mapping in `ost-features.md`.
+  3. Optional: training videos to close unknowns the guides do not cover.
 - **Landmines:**
   - Read section 5 clean-room rules before touching OST or QuickBid in any way.
   - Binary decompile and disassembly of OST was attempted once and blocked by the safety
     classifier. Do not retry it in any form.
+  - 2026-10-16: JC asked to point the REA MCP (reverse-engineering toolkit) at OST and
+    QuickBid. Declined: it breaks the clean-room rule and creates copyright exposure.
+    REA may be used on our own Rust builds only, never on theirs.
+  - Raw guide article text is copyrighted. Keep it in the session scratchpad; commit only
+    our paraphrased ledgers and specs.
   - JC asked that OST study NOT drive his PC (no Windows-MCP, computer-use, desktop
     screenshots, or launching OST). Use public docs and YouTube only.
 
@@ -105,11 +119,13 @@ without asking, within section 5 guardrails. No planning theater. Tight summarie
   3. Phase 2: rest of the OST feature set from the spec.
   4. Phase 3: bidding module (QuickBid equivalent) on the same data.
   5. Phase 4: hook into the company systems (for example the Athena bid estimate).
-- **Stack:** Not decided. Leading proposal is a web app (React plus PDF.js plus canvas),
-  with an optional desktop wrapper. Decide at the end of Phase 0.
+- **Stack:** Rust (decided by JC 2026-10-16). UI and PDF renderer chosen in the Phase 1
+  plan.
 - **Data sources:** Reference job files in `reference/` (once added). OST and QuickBid on
   JC's PC are study subjects only, never data sources for code.
-- **Key files:** `CLAUDE.md`, `THINKING.md`, `docs/spec/ost-features.md`.
+- **Key files:** `CLAUDE.md`, `THINKING.md`, `docs/spec/ost-features.md`,
+  `docs/spec/quickbid-features.md`, `docs/study/ost/*.md` and `docs/study/qb/*.md`
+  (evidence ledgers; spec bullets cite their IDs such as `OST-05-015`, `QB-08-015`).
 - **External services and keys:** None yet. Never hardcode keys, never commit .env.
 - **Conventions in this codebase:** To be set with the stack.
 
@@ -123,6 +139,9 @@ without asking, within section 5 guardrails. No planning theater. Tight summarie
   (Excel, CSV, PDF reports).
 - Never copy their code, icons, images, UI artwork, help text, product names or branding
   into this repo. Specs describe behavior in our own words.
+- Never point reverse-engineering tools (for example the REA MCP) at OST or QuickBid. Use
+  them only on our own builds.
+- Raw text of vendor help articles stays out of the repo. Commit paraphrased ledgers only.
 - Never modify the OST or QuickBid installation or JC's real project files. Work on copies.
 - Before committing reference files, check they hold no client-confidential data JC does
   not want in GitHub. Keep the repo private.
@@ -148,15 +167,26 @@ Anything a non-developer will use gets, before it is called finished:
 
 ## 8. Backlog
 
-1. Phase 0 spec: OST features (`docs/spec/ost-features.md`), first draft done; close the
-   open questions.
-2. Phase 0 spec: QuickBid features (`docs/spec/quickbid-features.md`), lower priority.
-3. Reference job in `reference/`.
-4. Stack decision and Phase 1 plan.
+1. Reference job in `reference/` (OST and QuickBid exports of the same job plus plans).
+2. Close the Unknowns registers in both specs against the reference job.
+3. Phase 1 build plan in Rust from the MVP mapping in `docs/spec/ost-features.md`.
+4. Training videos as a second source for unknowns the guides leave open.
 
 ---
 
 ## 9. SESSION CHANGELOG (newest first; never delete old entries)
+
+### 2026-10-16 - Session 3 (PC)
+- Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`
+  first draft, both from a full read of the public guides (555 articles). Evidence ledgers
+  in `docs/study/`. Clean-room overlap check run on committed docs (no copied prose).
+- Decided: stack is Rust. Method is the evidence loop (ledger, unknowns, black-box
+  comparison, coverage).
+- Broke or blocked: firecrawl rate limits gave summaries only, so direct fetch from the
+  site sitemap was used instead. One reader pass hit the usage limit and was resumed. JC
+  asked to use the REA MCP on OST and QuickBid binaries; declined (clean-room and
+  copyright), recorded as a landmine.
+- Next: JC adds reference exports; then the Phase 1 Rust plan.
 
 ### 2026-10-15 - Session 2 (PC)
 - Shipped: `docs/spec/ost-features.md` first draft (overview, storage, plans, scale,
