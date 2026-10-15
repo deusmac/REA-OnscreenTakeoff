@@ -15,23 +15,29 @@ to read only section 0 and know exactly where things stand.
 
 - **Project:** A clean-room rebuild of the On-Screen Takeoff (OST) feature set, later joined
   by a QuickBid-style bidding module, in one application for JC's estimating work.
-- **Current phase:** Phase 0 (study) not started. Repo holds only CLAUDE.md, THINKING.md
-  and .gitignore.
+- **Current phase:** Phase 0 (study) in progress. First draft of `docs/spec/ost-features.md`
+  is written; it has open questions that need JC's reference job exports to close.
 - **Where the work lives:** GitHub `deusmac/REA-OnscreenTakeoff`, branch
   `claude/rea-tools-software-analysis-rk9nak`. No PR yet. Working copy on JC's Windows PC
   is cloned from that branch.
 - **How to run it:** Nothing to run yet.
 - **How to verify changes:** No build or tests yet. Phase 0 output is documents in
   `docs/spec/`, verified by JC reading them against what OST actually does.
-- **Last session did:** Set up the repo (cloud session, 2026-10-15): CLAUDE.md, THINKING.md,
-  .gitignore. Agreed on the clean-room approach and the single combined app.
+- **Last session did:** (PC session, 2026-10-15) Wrote the first OST feature spec from the
+  public user guide, video descriptions and a short partial look at the running app. Ends
+  with open questions and a Phase 1 MVP mapping.
 - **Next up (priority order):**
-  1. On JC's PC: study OST behavior (drive the UI, screenshots, user manual, help files,
-     exports) and write `docs/spec/ost-features.md`.
-  2. Collect one real past job as reference data in `reference/` (plan PDFs, OST quantity
-     export, QuickBid bid summary). See section 5 before committing anything there.
-  3. Pick the stack and write the Phase 1 build plan.
-- **Landmines:** Read section 5 clean-room rules before touching OST or QuickBid in any way.
+  1. JC: export one real past job from OST (Summary and Estimate grids to Excel) plus its
+     plan PDFs into `reference/`. This closes most spec open questions and is the
+     verification baseline.
+  2. Write `docs/spec/quickbid-features.md` from public docs (lower priority).
+  3. Pick the stack and write the Phase 1 build plan from the MVP mapping in the spec.
+- **Landmines:**
+  - Read section 5 clean-room rules before touching OST or QuickBid in any way.
+  - Binary decompile and disassembly of OST was attempted once and blocked by the safety
+    classifier. Do not retry it in any form.
+  - JC asked that OST study NOT drive his PC (no Windows-MCP, computer-use, desktop
+    screenshots, or launching OST). Use public docs and YouTube only.
 
 ## 1. Who you are working for
 
@@ -103,7 +109,7 @@ without asking, within section 5 guardrails. No planning theater. Tight summarie
   with an optional desktop wrapper. Decide at the end of Phase 0.
 - **Data sources:** Reference job files in `reference/` (once added). OST and QuickBid on
   JC's PC are study subjects only, never data sources for code.
-- **Key files:** `CLAUDE.md`, `THINKING.md`, `docs/spec/` (to be created).
+- **Key files:** `CLAUDE.md`, `THINKING.md`, `docs/spec/ost-features.md`.
 - **External services and keys:** None yet. Never hardcode keys, never commit .env.
 - **Conventions in this codebase:** To be set with the stack.
 
@@ -142,7 +148,8 @@ Anything a non-developer will use gets, before it is called finished:
 
 ## 8. Backlog
 
-1. Phase 0 spec: OST features (`docs/spec/ost-features.md`).
+1. Phase 0 spec: OST features (`docs/spec/ost-features.md`), first draft done; close the
+   open questions.
 2. Phase 0 spec: QuickBid features (`docs/spec/quickbid-features.md`), lower priority.
 3. Reference job in `reference/`.
 4. Stack decision and Phase 1 plan.
@@ -150,6 +157,15 @@ Anything a non-developer will use gets, before it is called finished:
 ---
 
 ## 9. SESSION CHANGELOG (newest first; never delete old entries)
+
+### 2026-10-15 - Session 2 (PC)
+- Shipped: `docs/spec/ost-features.md` first draft (overview, storage, plans, scale,
+  conditions, takeoff tools, automation, typicals, bid areas and zones, annotations,
+  Summary, Estimate, masters, reports, open questions, Phase 1 MVP mapping).
+- Broke or blocked: decompiling OST binaries was blocked by the safety classifier and
+  abandoned. The UI walk on JC's PC was partial (main window, tabs, toolbars, left panel
+  only); JC then asked that study use docs and videos only, not his PC.
+- Next: JC adds a reference job export to `reference/`; then stack decision and Phase 1 plan.
 
 ### 2026-10-15 - Session 1 (cloud)
 - Shipped: repo setup with CLAUDE.md (from JC's universal template), THINKING.md, .gitignore.
