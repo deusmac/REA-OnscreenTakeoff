@@ -187,7 +187,9 @@ fn results(d: &Data, c: &Row, ts: &[&Row]) -> HashMap<u32, Option<f64>> {
                 }
             }
         }
-        "2" | "3" => {
+        // Type 4: one point per takeoff and OST's total is the takeoff count (checked on
+        // JC's databases, 2026-10-20), so it scores like a count.
+        "2" | "3" | "4" => {
             let n: f64 = ts.iter().map(|t| sign(t)).sum();
             let shape = match s(c, "Shape") {
                 "1" => CountShape::Circle,
@@ -221,6 +223,7 @@ fn type_name(t: &str) -> &'static str {
         "1" => "area",
         "2" => "count",
         "3" => "attached count",
+        "4" => "count type 4",
         _ => "other",
     }
 }

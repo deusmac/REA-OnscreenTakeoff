@@ -213,8 +213,15 @@ Anything a non-developer will use gets, before it is called finished:
   E:\opentakeoff-study\answer-key, run with OST_ANSWER_KEY set). Our core reproduces 1962 of
   1971 OST stored totals from the vendor sample DB; only area grid length (code 16) misses.
   Format notes in `docs/study/formats/`. OST positions are real inches, not sheet units.
-- Next: area grid length; run more of JC's jobs through both readers; QuickBid bid-total
-  formula; M2 UI (open .osp straight into the viewer with takeoffs drawn).
+- Corpus run (same day): all of `C:\OCS Documents` copied to E:\opentakeoff-study\corpus.
+  OST reader opens 37 of 38 .osp (The Loom is part 2 of a split CAB, part 1 missing; clear
+  error now). QuickBid reader opens 17 of 17 .qbp. Parity over 16 OST databases (46,177
+  stored quantities): 97.3% match. Count 99.6%, type-4 count 100%, attached 98.4%,
+  linear 97.6%, area 90.5%. Scan tools: `cargo run --release -p rea-ost --example scan --
+  <folder>` and the same for `rea-quickbid`. Per-database results: answer-keys\*\parity.txt.
+- Next: close the parity gaps (gridded area rounds partial tiles up and needs the grid
+  origin; rows where OST stores 0 but we compute a value, probably stale totals; a few huge
+  linear overcounts; count perimeter code 13); QuickBid bid-total formula; M2 UI.
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`

@@ -41,6 +41,8 @@ pub enum OstError {
     MissingElement(&'static str),
     #[error("{entity} has no usable UID")]
     MissingUid { entity: &'static str },
+    #[error("this file is part {part} of a package split across several files; open the set from its first file")]
+    SplitPackage { part: u16 },
     #[error("{entity} {uid}: bad value {value:?} for {attr}")]
     BadValue {
         entity: &'static str,
@@ -135,6 +137,12 @@ pub fn import_path(path: &std::path::Path) -> Result<OstImport, OstError> {
 }
 
 fn import_package(data: &[u8]) -> Result<OstImport, OstError> {
+    // CAB header flags (offset 30): 1 = has a previous cabinet, 2 = has a next one. Spanned
+    // sets are not supported yet; seen once (a 46 MB job whose first part was missing).
+    if data.len() >= 36 && u16::from_le_bytes([data[30], data[31]]) & 3 != 0 {
+        let part = u16::from_le_bytes([data[34], data[35]]) + 1;
+        return Err(OstError::SplitPackage { part });
+    }
     let mut cabinet = cab::Cabinet::new(Cursor::new(data))?;
     let mut entries: Vec<(String, u64)> = Vec::new();
     for folder in cabinet.folder_entries() {
@@ -232,12 +240,15 @@ fn take_num<T: FromStr + Default>(
     key: &'static str,
 ) -> Result<T, OstError> {
     match m.remove(key) {
-        Some(v) if !v.trim().is_empty() => v.trim().parse().map_err(|_| OstError::BadValue {
-            entity,
-            uid: uid.to_string(),
-            attr: key,
-            value: v,
-        }),
+        // Some jobs store the text NULL for an unset number (seen on page Rotation).
+        Some(v) if !v.trim().is_empty() && !v.trim().eq_ignore_ascii_case("NULL") => {
+            v.trim().parse().map_err(|_| OstError::BadValue {
+                entity,
+                uid: uid.to_string(),
+                attr: key,
+                value: v,
+            })
+        }
         _ => Ok(T::default()),
     }
 }
@@ -488,7 +499,9 @@ fn map_condition(
     let style = match type_code.as_str() {
         "0" => ConditionStyle::Linear,
         "1" => ConditionStyle::Area,
-        "2" => ConditionStyle::Count,
+        // 3 = attached count (door or window on a wall, ost-quantities.md). 4 is unknown: seen
+        // only with count result codes and no takeoffs; kept as a count, raw code in `extra`.
+        "2" | "3" | "4" => ConditionStyle::Count,
         other => return Err(bad("BidCondition", &u, "Type", other)),
     };
     let height = take_f64(&mut m, "BidCondition", &u, "Height")?;
@@ -629,6 +642,32 @@ fn map_takeoff(
         ConditionStyle::Linear => {
             // Linear: points, then three values (arc point x, y and signed bulge), all zero
             // for a straight segment.
+            // Older jobs write one segment as x1;y1;x2;y2;s (s = signed arc height).
+            // shortcut: the arc's through point is set to the chord middle, since only s is stored;
+            // compute the true point once the sign convention is pinned down.
+            if nums.len() == 5 {
+                let pts = &nums[..4];
+                if nums[4] != 0.0 {
+                    arc = Some(Arc {
+                        through: Point {
+                            x: (pts[0] + pts[2]) / 2.0 * k,
+                            y: (pts[1] + pts[3]) / 2.0 * k,
+                        },
+                        sagitta: nums[4] * k,
+                    });
+                }
+                return Ok((
+                    Takeoff {
+                        id,
+                        page_id,
+                        condition_id,
+                        bid_area_id,
+                        negative,
+                        geometry: Geometry::Polyline(points(pts, k)),
+                    },
+                    TakeoffRaw { arc, extra: m },
+                ));
+            }
             let (pts, trailer) = if nums.len() % 2 == 1 {
                 let (p, t) = nums.split_at(nums.len().saturating_sub(3));
                 (p, Some(t))
@@ -660,12 +699,16 @@ fn map_takeoff(
                 backouts: Vec::new(),
             }
         }
-        ConditionStyle::Count => {
-            if nums.len() != 2 {
-                return Err(bad("BidTakeoff", &u, "Position", &pos_raw));
+        ConditionStyle::Count => match nums.len() {
+            2 => Geometry::Point(points(&nums, k)[0]),
+            // Attached count: distance along the parent wall and side, then the point.
+            4 => {
+                m.insert("AttachDistance".into(), nums[0].to_string());
+                m.insert("AttachSide".into(), nums[1].to_string());
+                Geometry::Point(points(&nums[2..], k)[0])
             }
-            Geometry::Point(points(&nums, k)[0])
-        }
+            _ => return Err(bad("BidTakeoff", &u, "Position", &pos_raw)),
+        },
     };
     let t = Takeoff {
         id,
