@@ -140,6 +140,12 @@ without asking, within section 5 guardrails. No planning theater. Tight summarie
   (evidence ledgers; spec bullets cite their IDs such as `OST-05-015`, `QB-08-015`).
 - **External services and keys:** None yet. Never hardcode keys, never commit .env.
 - **Conventions in this codebase:** To be set with the stack.
+- **Skills for this project** (global skill routing in `~/.claude/CLAUDE.md` applies too):
+  `superpowers:writing-plans` for each milestone plan, `superpowers:test-driven-development`
+  for core math (tests cite ledger IDs), `ecc:rust-build` on build errors, `ecc:rust-review`
+  before each milestone commit, `verify-done` plus a `run.bat` screenshot before claiming done.
+  The changelog is section 9 of this file; do not create `CHANGELOG.md`. Never use
+  `reverse-engineer-anything` or the REA MCP on OST or QuickBid (section 5).
 
 ## 5. Guardrails (do not cross without JC's explicit go-ahead)
 
@@ -187,6 +193,11 @@ Anything a non-developer will use gets, before it is called finished:
 ---
 
 ## 9. SESSION CHANGELOG (newest first; never delete old entries)
+
+### 2026-10-20 - Session 4 (PC)
+- Shipped: skill routing rules in global `~/.claude/CLAUDE.md` and a project skills line in
+  section 4. JC chose not to apply the cloud setup script; skills are used per task instead.
+- Next: unchanged (M1 plan viewer; JC adds reference exports).
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`
