@@ -5,6 +5,7 @@
 pub mod area;
 pub mod count;
 pub mod linear;
+pub mod model;
 pub mod scale;
 pub mod summary;
 pub mod units;
