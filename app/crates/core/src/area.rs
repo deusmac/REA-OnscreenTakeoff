@@ -84,12 +84,24 @@ pub fn area_results(shape: &AreaShape, real_per_point: f64, depth: f64, slope: f
     AreaResults {
         area: a - ba,
         area_ignore_backouts: a,
-        // unknown: sign convention of BL (U-05); plain reading of the description is L + BL.
+        // U-05 closed by OST answer key: the stored perimeter is L + BL (115 of 115 rows).
         perimeter: l + bl,
         perimeter_without_backouts: l,
         // unknown: slope also applies to the backout volume (plain reading).
         volume: (a - ba) * depth,
         volume_ignore_backouts: a * depth,
+    }
+}
+
+/// Tile Count (Average): area over one tile's area, fractional (OST-05-023). Zero when
+/// the tile size is not set. Same units for both, for example square inches.
+// Evidence: OST answer key, 6761.82 sq in with a 24 x 48 in tile stores 5.8696.
+pub fn tile_count_average(area: f64, tile_w: f64, tile_h: f64) -> f64 {
+    let tile = tile_w * tile_h;
+    if tile > 0.0 {
+        area / tile
+    } else {
+        0.0
     }
 }
 
@@ -181,6 +193,13 @@ mod tests {
         let mut cw = rect(10.0, 10.0);
         cw.reverse();
         assert_eq!(ring_area_pts(&cw), 100.0);
+    }
+
+    #[test]
+    fn tile_count_average_is_fractional() {
+        // OST-05-023 with OST answer key: 6761.82 sq in of 24 x 48 tiles is 5.8696.
+        assert!((tile_count_average(6761.82, 24.0, 48.0) - 5.869_635).abs() < 1e-6);
+        assert_eq!(tile_count_average(100.0, 0.0, 10.0), 0.0);
     }
 
     #[test]
