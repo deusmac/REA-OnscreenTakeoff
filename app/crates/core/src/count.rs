@@ -1,0 +1,142 @@
+//! Count-condition results (OST-05-035).
+//!
+//! C = count, H, W, D = height, width, depth in inches. Depth equals width for every area
+//! shape except the rectangle (OST-05-033). Results are full precision (OST-01-041).
+//!
+//! unknown: round shapes (circle, triangle, hexagon) use these bounding-box formulas as the
+//! spec gives them (U-06). Which results each shape offers (OST-05-036) is a UI concern and
+//! is not enforced here.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CountShape {
+    Square,
+    Circle,
+    Triangle,
+    Diamond,
+    Ellipse,
+    Hexagon,
+    Octagon,
+    Rectangle,
+}
+
+/// Dimensions of one counted object, in inches.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CountDims {
+    pub height: f64,
+    pub width: f64,
+    pub depth: f64,
+}
+
+impl CountDims {
+    /// Builds dimensions; `depth` is honored only for the rectangle, else D = W (OST-05-033).
+    pub fn new(shape: CountShape, height: f64, width: f64, depth: f64) -> Self {
+        let depth = if shape == CountShape::Rectangle {
+            depth
+        } else {
+            width
+        };
+        Self {
+            height,
+            width,
+            depth,
+        }
+    }
+}
+
+/// All count results for a number of objects of the given dimensions (OST-05-035).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CountResults {
+    pub count: f64,
+    pub total_height: f64,
+    pub perimeter: f64,
+    pub top_or_bottom: f64,
+    pub top_and_bottom: f64,
+    pub width_side: f64,
+    pub both_width_sides: f64,
+    pub depth_side: f64,
+    pub both_depth_sides: f64,
+    pub all_sides: f64,
+    pub all_sides_plus_top_bottom: f64,
+    pub volume: f64,
+}
+
+pub fn count_results(count: u32, d: CountDims) -> CountResults {
+    let c = f64::from(count);
+    let (h, w, dp) = (d.height, d.width, d.depth);
+    CountResults {
+        count: c,
+        total_height: c * h,
+        perimeter: c * 2.0 * (w + dp),
+        top_or_bottom: c * w * dp,
+        top_and_bottom: c * 2.0 * w * dp,
+        width_side: c * h * w,
+        both_width_sides: c * 2.0 * h * w,
+        depth_side: c * h * dp,
+        both_depth_sides: c * 2.0 * h * dp,
+        all_sides: c * 2.0 * (h * w + h * dp),
+        all_sides_plus_top_bottom: c * 2.0 * (h * w + h * dp + w * dp),
+        volume: c * h * w * dp,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 4 columns, 96 in tall, 12 x 12 in (square), hand-checked.
+    fn cols() -> CountResults {
+        count_results(4, CountDims::new(CountShape::Square, 96.0, 12.0, 99.0))
+    }
+
+    #[test]
+    fn count_height_perimeter() {
+        // OST-05-035: Count = C; Total Height = C*H; Perimeter = C*2*(W+D).
+        let r = cols();
+        assert_eq!(r.count, 4.0);
+        assert_eq!(r.total_height, 384.0);
+        assert_eq!(r.perimeter, 4.0 * 2.0 * 24.0);
+    }
+
+    #[test]
+    fn top_bottom_surfaces() {
+        // OST-05-035: top or bottom = C*W*D; top and bottom = 2x that.
+        let r = cols();
+        assert_eq!(r.top_or_bottom, 576.0);
+        assert_eq!(r.top_and_bottom, 1152.0);
+    }
+
+    #[test]
+    fn side_surfaces() {
+        // OST-05-035: single/both width and depth sides, all sides, all plus top and bottom.
+        let r = cols();
+        assert_eq!(r.width_side, 4.0 * 96.0 * 12.0);
+        assert_eq!(r.both_width_sides, 2.0 * r.width_side);
+        assert_eq!(r.depth_side, r.width_side);
+        assert_eq!(r.both_depth_sides, r.both_width_sides);
+        assert_eq!(r.all_sides, 4.0 * 2.0 * (96.0 * 12.0 * 2.0));
+        assert_eq!(r.all_sides_plus_top_bottom, r.all_sides + r.top_and_bottom);
+    }
+
+    #[test]
+    fn volume_non_rectangle_uses_w_squared() {
+        // OST-05-035: Volume = C*H*W^2 when D = W (OST-05-033).
+        assert_eq!(cols().volume, 4.0 * 96.0 * 144.0);
+    }
+
+    #[test]
+    fn rectangle_uses_own_depth() {
+        // OST-05-035 / OST-05-033: rectangle volume = C*H*W*D.
+        let r = count_results(2, CountDims::new(CountShape::Rectangle, 10.0, 3.0, 5.0));
+        assert_eq!(r.volume, 2.0 * 10.0 * 3.0 * 5.0);
+        assert_eq!(r.perimeter, 2.0 * 2.0 * 8.0);
+    }
+
+    #[test]
+    fn zero_height_is_flat() {
+        // OST-05-033: objects are 3D unless Height = 0; flat gives no volume or sides.
+        let r = count_results(3, CountDims::new(CountShape::Octagon, 0.0, 10.0, 0.0));
+        assert_eq!(r.volume, 0.0);
+        assert_eq!(r.all_sides, 0.0);
+        assert_eq!(r.top_or_bottom, 300.0);
+    }
+}
