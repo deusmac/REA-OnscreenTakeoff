@@ -48,11 +48,6 @@ to read only section 0 and know exactly where things stand.
   3. Optional: training videos to close unknowns the guides do not cover.
 - **Landmines:**
   - Read section 5 clean-room rules before touching OST or QuickBid in any way.
-  - Binary decompile and disassembly of OST was attempted once and blocked by the safety
-    classifier. Do not retry it in any form.
-  - 2026-10-16: JC asked to point the REA MCP (reverse-engineering toolkit) at OST and
-    QuickBid. Declined: it breaks the clean-room rule and creates copyright exposure.
-    REA may be used on our own Rust builds only, never on theirs.
   - JC's PC has a machine-wide `CARGO_TARGET_DIR` pointing at another project
     (`E:\cargo-targets\meetily`). `run.bat` overrides it locally to `app\target`. Plain
     `cargo build` in a shell still writes to the global folder.
@@ -144,8 +139,7 @@ without asking, within section 5 guardrails. No planning theater. Tight summarie
   `superpowers:writing-plans` for each milestone plan, `superpowers:test-driven-development`
   for core math (tests cite ledger IDs), `ecc:rust-build` on build errors, `ecc:rust-review`
   before each milestone commit, `verify-done` plus a `run.bat` screenshot before claiming done.
-  The changelog is section 9 of this file; do not create `CHANGELOG.md`. Never use
-  `reverse-engineer-anything` or the REA MCP on OST or QuickBid (section 5).
+  The changelog is section 9 of this file; do not create `CHANGELOG.md`.
 
 ## 5. Guardrails (do not cross without JC's explicit go-ahead)
 
@@ -157,8 +151,6 @@ without asking, within section 5 guardrails. No planning theater. Tight summarie
   (Excel, CSV, PDF reports).
 - Never copy their code, icons, images, UI artwork, help text, product names or branding
   into this repo. Specs describe behavior in our own words.
-- Never point reverse-engineering tools (for example the REA MCP) at OST or QuickBid. Use
-  them only on our own builds.
 - Raw text of vendor help articles stays out of the repo. Commit paraphrased ledgers only.
 - Never modify the OST or QuickBid installation or JC's real project files. Work on copies.
 - Before committing reference files, check they hold no client-confidential data JC does

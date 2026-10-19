@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 eframe = "0.35.0"
 rea-core = { version = "0.1.0", path = "../crates/core" }
+rea-pdf = { version = "0.1.0", path = "../crates/pdf" }
+rfd = "0.17.2"
 
 [lints]
 workspace = true
