@@ -13,12 +13,13 @@
 **Every agent updates this section before ending a session.** A new agent must be able
 to read only section 0 and know exactly where things stand.
 
-- **Project:** A clean-room rebuild of the On-Screen Takeoff (OST) feature set, later joined
-  by a QuickBid-style bidding module, in one application for JC's estimating work.
-- **Current phase:** Phase 0 (study) nearly done. Both public user guides were read in full
-  (OST 286 articles, QuickBid 268). Specs: `docs/spec/ost-features.md` (second draft) and
-  `docs/spec/quickbid-features.md` (first draft). Evidence ledger with IDs in `docs/study/`.
-  Remaining gaps are in each spec's Unknowns register and need JC's reference exports.
+- **Project:** OpenTakeoff (JC's working name, 2026-10-20). A clean-room rebuild of the
+  On-Screen Takeoff (OST) feature set, later joined by a QuickBid-style bidding module, in
+  one application for JC's estimating work. Goal: one-to-one parity, and full compatibility
+  with OST and QuickBid project files (open their jobs, same numbers).
+- **Current phase:** Phase 1. M0 and M1 (plan viewer) done; core math, data model, SQLite
+  store and Excel export landed as libraries (55 tests). Specs: `docs/spec/ost-features.md`
+  and `docs/spec/quickbid-features.md`, evidence ledger in `docs/study/`.
 - **Stack:** Rust (JC's decision, 2026-10-16). Rust core for geometry, scale and quantity
   math; PDF renderer and desktop UI to be chosen in the Phase 1 plan.
 - **Method (clean-room evidence loop):** ledger IDs per behavior, unknowns register,
@@ -28,7 +29,7 @@ to read only section 0 and know exactly where things stand.
   `claude/rea-tools-software-analysis-rk9nak`. No PR yet. Working copy on JC's Windows PC
   is cloned from that branch.
 - **How to run it:** double-click `run.bat` in the repo root (builds release, then opens
-  the REA Takeoff window). Code lives in `app/` (Cargo workspace: `crates/core`, `store`,
+  the OpenTakeoff window; a PDF path as argument opens it). Code lives in `app/` (Cargo workspace: `crates/core`, `store`,
   `pdf`, `export`, and `desktop`).
 - **How to verify changes:** in `app/`: `cargo test --workspace`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check`,
@@ -42,15 +43,21 @@ to read only section 0 and know exactly where things stand.
      same job from QuickBid (bid summary, job cost summary, job data export), plus its plan
      PDFs, into `reference/`. Closes the Unknowns registers and is the verification
      baseline.
-  2. M0 done (plan approved by JC). Next is M1, the plan viewer: add `pdfium-render` with a
-     bundled `pdfium.dll`, open a PDF, page list, zoom, pan, tile cache. See
+  2. OST and QuickBid file compatibility: JC's job files are in `C:\OCS Documents` (OST
+     `.mdb` and `.osp`, QuickBid `.qbp`). Map the formats from copies, write the format
+     notes in `docs/study/formats/`, then build importers.
+  3. M2 (project, pages, scale UI) wired to the new store and core modules. See
      `docs/plan/phase-1-rust.md`.
-  3. Optional: training videos to close unknowns the guides do not cover.
+  4. Optional: training videos to close unknowns the guides do not cover.
 - **Landmines:**
   - Read section 5 clean-room rules before touching OST or QuickBid in any way.
   - JC's PC has a machine-wide `CARGO_TARGET_DIR` pointing at another project
-    (`E:\cargo-targets\meetily`). `run.bat` overrides it locally to `app\target`. Plain
-    `cargo build` in a shell still writes to the global folder.
+    (`E:\cargo-targets\meetily`). C: is nearly full (filled to 0 bytes on 2026-10-20), so
+    builds go to `E:\cargo-targets\opentakeoff`: `run.bat` does this, and in a shell set
+    `$env:CARGO_TARGET_DIR="E:\cargo-targets\opentakeoff"` first. Subagents in worktrees
+    must share that folder, never build into their own worktree on C:.
+  - Pdfium crashes when two threads use it at once (even with `thread_safe`). Keep all
+    `rea-pdf` calls on one thread; its tests serialize on a mutex.
   - egui/eframe 0.35 API: implement `App::ui(&mut self, ui, frame)` (not `update`), and
     use `egui::Panel::top/bottom/left` with `.show(ui, ..)`.
   - The Bash tool rewrites `>nul` to `/dev/null` and backslash escapes inside written
@@ -144,8 +151,11 @@ without asking, within section 5 guardrails. No planning theater. Tight summarie
 ## 5. Guardrails (do not cross without JC's explicit go-ahead)
 
 **Clean-room rules (this project lives or dies on these):**
-- Never decompile, disassemble, debug-attach to, or unpack OST or QuickBid binaries, DLLs,
-  installers or their databases. Never read their proprietary project file internals.
+- Never decompile, disassemble, debug-attach to, or unpack OST or QuickBid binaries, DLLs
+  or installers.
+- Project files: JC gave the go-ahead (2026-10-20) to read his own OST and QuickBid job files
+  for import/export compatibility. Work on copies only, never inside `C:\OCS Documents`.
+  Commit format notes in our own words; never commit raw job files (client data).
 - Study only through observable behavior and published material: using the app, screenshots,
   the user manuals and help files, training videos, and the exports the apps produce
   (Excel, CSV, PDF reports).
@@ -189,7 +199,15 @@ Anything a non-developer will use gets, before it is called finished:
 ### 2026-10-20 - Session 4 (PC)
 - Shipped: skill routing rules in global `~/.claude/CLAUDE.md` and a project skills line in
   section 4. JC chose not to apply the cloud setup script; skills are used per task instead.
-- Next: unchanged (M1 plan viewer; JC adds reference exports).
+- Shipped: M1 plan viewer (Pdfium 7881 bundled; whole-page image plus sharp render of the
+  visible area; Ctrl+wheel zoom, wheel and Shift+wheel pan, right/middle drag, Page Up/Down,
+  * + - / keys). Verified on a real 33-page 36 x 24 permit set: page flip 269 to 903 ms,
+  sharp at 239% (`docs/screens/m1-viewer-*.png`). Five parallel agents added core scale,
+  linear, area, count, summary, data model, SQLite store and Excel export; merged, 55 tests.
+- Decided: name is OpenTakeoff. JC allowed reading his own OST/QuickBid job files for
+  compatibility (copies only). REA tool lines removed from CLAUDE.md at JC's request.
+- Broke: C: drive filled to 0 bytes from per-worktree builds; cleaned, builds moved to E:.
+- Next: map OST and QuickBid file formats from copies, then M2 UI on the new libraries.
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`
