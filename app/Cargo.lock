@@ -2868,6 +2868,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rea-ost"
+version = "0.1.0"
+dependencies = [
+ "cab",
+ "quick-xml 0.37.5",
+ "rea-core",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "rea-pdf"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,15 @@
+[package]
+name = "rea-ost"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+rea-core = { path = "../core" }
+cab = "0.6"
+quick-xml = "0.37"
+thiserror = "1"
+
+[lints]
+workspace = true
