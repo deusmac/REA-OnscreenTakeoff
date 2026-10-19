@@ -2,6 +2,8 @@
 //!
 //! Formulas cite ledger IDs from `docs/study/` (for example OST-01-038).
 
+pub mod linear;
+pub mod scale;
 pub mod units;
 
 /// Crate version, shown in the app status bar.
