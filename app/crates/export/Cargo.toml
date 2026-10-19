@@ -6,6 +6,12 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+rust_xlsxwriter = "0.100.0"
+thiserror = "2.0.21"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+calamine = "0.37.0"
+tempfile = "3.27.0"
