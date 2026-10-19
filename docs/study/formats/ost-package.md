@@ -110,13 +110,12 @@ to the mapped struct (`project_extra`, `page_extra`, `condition_extra`, `takeoff
     When non-zero (condition `Curve` flag 0, three samples) we put the chord in the polyline
     and keep the arc in `TakeoffRaw.arc`. Evidence: in the sample the arc point sits 29.9
     units from the chord and the bulge value is -29.9. Our geometry has no arcs yet.
-- Coordinate unit finding: hundredths of an inch on the sheet. Evidence: on the 36 x 24 in
-  sheets the largest x and y over all takeoffs were 2643 and 1627. That is above the sheet
-  width in PDF points (2592), so points are ruled out, and it is below 3600 x 2400. Whether
-  it is exactly 1/100 in (or something close such as 1/96 in) is not proven from bounds
-  alone; verify by comparing one wall's drawn length with a printed OST quantity. We convert
-  with `value / 100 * 72` to points. Origin and y direction not checked (assumed top-left,
-  y down, like the sheet image).
+- Coordinate unit: real-world inches, already scaled by the page scale (settled 2026-10-20 by
+  the answer key in `ost-quantities.md`: 1962 of 1971 stored OST totals reproduced from these
+  coordinates with no scale applied). An earlier guess of hundredths of a sheet inch was close
+  only because the sample page is 1/8 in = 1 ft (96 real in per sheet inch). The importer
+  converts to sheet points with `value * ScaleFactor1 / ScaleFactor2 * 72`. Origin and y
+  direction still unchecked against a rendered PDF (assumed top-left, y down).
 - `Quantity` on the takeoff was 0 on every row, so OST does not store per-shape results.
   Totals have to be recomputed from geometry and scale, which is what rea-core does.
 - Not mapped: Count, Rotation, `No`, `BidZoneUID`, `BidTypAreaUID`, typical-group fields,

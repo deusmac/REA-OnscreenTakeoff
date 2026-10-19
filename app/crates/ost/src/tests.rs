@@ -75,21 +75,21 @@ fn maps_job() {
     assert_eq!((door.number, door.slope), (102, Some((1.0, 12.0))));
 
     assert_eq!(b.takeoffs.len(), 4);
-    // 100 hundredths of an inch = 1 in = 72 points
+    // Positions are real inches; at 1/8 in = 1 ft one real inch is 72/96 = 0.75 sheet points.
     match &b.takeoffs[0].geometry {
         Geometry::Polyline(v) => {
             assert_eq!(v.len(), 2);
-            assert!(near(v[1].y, 8.0 * 72.0));
+            assert!(near(v[1].y, 800.0 * 0.75));
         }
         g => panic!("{g:?}"),
     }
     assert!(b.takeoff_raw[&1].arc.is_none());
     let arc = b.takeoff_raw[&2].arc.as_ref().unwrap();
-    assert!(near(arc.sagitta, -0.1 * 72.0));
-    assert!(near(arc.through.x, 0.5 * 72.0));
+    assert!(near(arc.sagitta, -10.0 * 0.75));
+    assert!(near(arc.through.x, 50.0 * 0.75));
     assert!(b.takeoffs[2].negative);
     assert!(matches!(&b.takeoffs[2].geometry, Geometry::Polygon { outer, .. } if outer.len() == 4));
-    assert!(matches!(b.takeoffs[3].geometry, Geometry::Point(pt) if near(pt.x, 2.5 * 72.0)));
+    assert!(matches!(b.takeoffs[3].geometry, Geometry::Point(pt) if near(pt.x, 250.0 * 0.75)));
     assert_eq!(b.takeoffs[3].bid_area_id, None);
 }
 

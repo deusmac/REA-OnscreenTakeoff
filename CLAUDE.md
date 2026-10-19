@@ -207,7 +207,14 @@ Anything a non-developer will use gets, before it is called finished:
 - Decided: name is OpenTakeoff. JC allowed reading his own OST/QuickBid job files for
   compatibility (copies only). REA tool lines removed from CLAUDE.md at JC's request.
 - Broke: C: drive filled to 0 bytes from per-worktree builds; cleaned, builds moved to E:.
-- Next: map OST and QuickBid file formats from copies, then M2 UI on the new libraries.
+- Shipped later the same session: `rea-ost` (.osp/.ost importer), `rea-quickbid` (.qbp
+  reader, contacts and personal fields skipped), OST answer-key harness
+  (`tools/ost-answer-key.ps1`, `crates/core/tests/ost_parity.rs`, data in
+  E:\opentakeoff-study\answer-key, run with OST_ANSWER_KEY set). Our core reproduces 1962 of
+  1971 OST stored totals from the vendor sample DB; only area grid length (code 16) misses.
+  Format notes in `docs/study/formats/`. OST positions are real inches, not sheet units.
+- Next: area grid length; run more of JC's jobs through both readers; QuickBid bid-total
+  formula; M2 UI (open .osp straight into the viewer with takeoffs drawn).
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`

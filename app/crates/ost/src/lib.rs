@@ -17,8 +17,8 @@ use rea_core::model::{
 use thiserror::Error;
 use xml::Node;
 
-/// Takeoff coordinates are hundredths of an inch on the sheet (see the format notes).
-const POSITION_UNITS_PER_INCH: f64 = 100.0;
+/// Takeoff coordinates are real-world inches, already scaled (docs/study/formats/ost-quantities.md,
+/// confirmed by 1962 of 1971 OST totals); each page's scale turns them back into sheet points.
 const POINTS_PER_INCH: f64 = 72.0;
 const MAX_JOB_FILE: u64 = 512 * 1024 * 1024;
 const MAX_PLAN_FILE: u64 = 2 * 1024 * 1024 * 1024;
@@ -301,10 +301,6 @@ fn rgb(v: i64) -> [u8; 3] {
     ]
 }
 
-fn to_points(position_units: f64) -> f64 {
-    position_units / POSITION_UNITS_PER_INCH * POINTS_PER_INCH
-}
-
 // ---- mapping -----------------------------------------------------------------------------
 
 fn map_bid(n: &Node, cdn_types: &HashMap<String, String>) -> Result<OstBid, OstError> {
@@ -395,8 +391,19 @@ fn map_bid(n: &Node, cdn_types: &HashMap<String, String>) -> Result<OstBid, OstE
         conditions.iter().map(|c| (c.id, c.style)).collect();
     let mut takeoffs = Vec::new();
     let mut takeoff_raw = HashMap::new();
+    // A page without a scale keeps real inches as points; OST does not allow takeoff there.
+    let page_k: HashMap<Id, f64> = pages
+        .iter()
+        .map(|p| {
+            (
+                p.id,
+                p.scale.as_ref().map_or(1.0, |s| 1.0 / s.real_per_page_unit),
+            )
+        })
+        .collect();
     for (page_id, tn) in takeoff_nodes {
-        let (t, raw) = map_takeoff(tn, page_id, &cond_style, &bid_areas)?;
+        let k = page_k.get(&page_id).copied().unwrap_or(1.0);
+        let (t, raw) = map_takeoff(tn, page_id, k, &cond_style, &bid_areas)?;
         takeoff_raw.insert(t.id, raw);
         takeoffs.push(t);
     }
@@ -560,11 +567,12 @@ fn parse_position(s: &str, uid: &str) -> Result<Vec<f64>, OstError> {
         .ok_or_else(|| bad("BidTakeoff", uid, "Position", s))
 }
 
-fn points(flat: &[f64]) -> Vec<Point> {
+/// `k` is sheet points per real inch for the takeoff's page.
+fn points(flat: &[f64], k: f64) -> Vec<Point> {
     flat.chunks_exact(2)
         .map(|c| Point {
-            x: to_points(c[0]),
-            y: to_points(c[1]),
+            x: c[0] * k,
+            y: c[1] * k,
         })
         .collect()
 }
@@ -572,6 +580,7 @@ fn points(flat: &[f64]) -> Vec<Point> {
 fn map_takeoff(
     n: &Node,
     page_id: Id,
+    k: f64,
     cond_style: &HashMap<Id, ConditionStyle>,
     areas: &[BidArea],
 ) -> Result<(Takeoff, TakeoffRaw), OstError> {
@@ -633,21 +642,21 @@ fn map_takeoff(
                 if *x != 0.0 || *y != 0.0 || *s != 0.0 {
                     arc = Some(Arc {
                         through: Point {
-                            x: to_points(*x),
-                            y: to_points(*y),
+                            x: *x * k,
+                            y: *y * k,
                         },
-                        sagitta: to_points(*s),
+                        sagitta: *s * k,
                     });
                 }
             }
-            Geometry::Polyline(points(pts))
+            Geometry::Polyline(points(pts, k))
         }
         ConditionStyle::Area => {
             if nums.len() < 6 || nums.len() % 2 == 1 {
                 return Err(bad("BidTakeoff", &u, "Position", &pos_raw));
             }
             Geometry::Polygon {
-                outer: points(&nums),
+                outer: points(&nums, k),
                 backouts: Vec::new(),
             }
         }
@@ -655,7 +664,7 @@ fn map_takeoff(
             if nums.len() != 2 {
                 return Err(bad("BidTakeoff", &u, "Position", &pos_raw));
             }
-            Geometry::Point(points(&nums)[0])
+            Geometry::Point(points(&nums, k)[0])
         }
     };
     let t = Takeoff {
