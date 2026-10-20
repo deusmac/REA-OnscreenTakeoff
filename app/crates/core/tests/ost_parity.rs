@@ -9,10 +9,46 @@ use std::path::Path;
 
 use rea_core::area::{area_results, slope_factor, tile_count_average, AreaShape};
 use rea_core::count::{count_results, CountDims, CountShape};
-use rea_core::linear::{linear_results, LinearInput, Opening, Slope};
+use rea_core::linear::{
+    linear_results, ost_segment, points_inside, LinearInput, Opening, Point, Slope,
+};
 use rea_core::scale::{Scale, ScaleStyle};
 
 type Row = HashMap<String, String>;
+/// Zone outlines per page: (zone UID, ring).
+type ZoneRings = HashMap<String, Vec<(String, Vec<Point>)>>;
+
+/// Typical-group takeoffs (TypGroupUID set) are left out of the page totals; OST keeps them
+/// in its typical-group totals (docs/study/formats/ost-quantities.md).
+fn in_page_totals(t: &Row) -> bool {
+    s(t, "TypGroupUID").is_empty()
+}
+
+/// The points that place a takeoff of this condition type on the page.
+fn placed_points(ty: &str, t: &Row) -> Vec<Point> {
+    let v = nums(t);
+    match ty {
+        "0" => ost_segment(&v).map_or(vec![], |(a, b, _)| vec![a, b]),
+        "3" => pairs(v.get(2..4).unwrap_or(&[])),
+        _ => pairs(&v),
+    }
+}
+
+/// The takeoff's zone: its own BidZoneUID, else the zone whose outline on the page holds
+/// all its points, else none. Zone rule: docs/study/formats/ost-quantities.md.
+fn effective_zone(rings: &ZoneRings, ty: &str, t: &Row) -> String {
+    let own = s(t, "BidZoneUID");
+    if !own.is_empty() {
+        return own.to_string();
+    }
+    let pts = placed_points(ty, t);
+    rings
+        .get(s(t, "BidPageUID"))
+        .into_iter()
+        .flatten()
+        .find(|(_, ring)| points_inside(&pts, ring))
+        .map_or(String::new(), |(z, _)| z.clone())
+}
 
 fn load(dir: &Path, name: &str) -> Vec<Row> {
     let text = std::fs::read_to_string(dir.join(name))
@@ -115,10 +151,11 @@ fn results(d: &Data, c: &Row, ts: &[&Row]) -> HashMap<u32, Option<f64>> {
                         }
                     })
                     .collect();
-                let pts = pairs(&v[..v.len().min(4)]);
-                let sag = v.get(4).copied().unwrap_or(0.0);
+                let Some((a, b, sag)) = ost_segment(&v) else {
+                    continue;
+                };
                 let r = linear_results(&LinearInput {
-                    points: &pts,
+                    points: &[a, b],
                     sagittas: &[sag],
                     scale: &unit,
                     height: num(c, "Height"),
@@ -282,10 +319,28 @@ fn ost_answer_key_parity() {
     let uid_bid: HashMap<&str, &str> = tks.iter().map(|t| (s(t, "UID"), s(t, "BidUID"))).collect();
     let mut groups: HashMap<_, Vec<usize>> = HashMap::new();
     let mut kids: HashMap<String, Vec<usize>> = HashMap::new();
+    // Zone outlines: a takeoff with a zone and no condition; its points are the ring.
+    let mut rings: ZoneRings = HashMap::new();
+    for t in tks
+        .iter()
+        .filter(|t| !conds.contains_key(s(t, "BidConditionUID")))
+    {
+        if !s(t, "BidZoneUID").is_empty() {
+            rings
+                .entry(s(t, "BidPageUID").to_string())
+                .or_default()
+                .push((s(t, "BidZoneUID").to_string(), pairs(&nums(t))));
+        }
+    }
     for (i, t) in tks.iter().enumerate() {
         let mut k = key(t, s(t, "BidAreaUID"));
-        k.2.clear(); // zone is a region, not a takeoff attribute
-        groups.entry(k).or_default().push(i);
+        // A zone is a region on the page; most takeoffs carry no zone id of their own.
+        if let Some(c) = conds.get(s(t, "BidConditionUID")) {
+            k.2 = effective_zone(&rings, s(c, "Type"), t);
+        }
+        if in_page_totals(t) {
+            groups.entry(k).or_default().push(i);
+        }
         let p = s(t, "ParentUID");
         // A parent UID from another bid is a stale copy link; OST ignores that child.
         if !p.is_empty() && uid_bid.get(p) == Some(&s(t, "BidUID")) {
@@ -315,23 +370,24 @@ fn ost_answer_key_parity() {
             (a, _) => (a, 1.0),
         };
         let zone = s(tot, "BidZoneUID");
-        let mut gk = key(tot, area);
-        // Zones are drawn regions on a page; the takeoffs carry no zone id. A zone row holds
-        // the whole (signed) quantity of its page and condition, so it reads the zone-free group.
-        gk.2.clear();
-        let has_zone_sibling = zone.is_empty()
-            && zone_sibling.contains(&(gk.1.clone(), gk.3.clone(), gk.4.clone(), gk.5.clone()));
-        let zsign = if zone_neg.get(zone) == Some(&true) {
-            -1.0
-        } else {
-            1.0
-        };
+        let gk = key(tot, area);
+        // Takeoffs were grouped by the zone whose outline holds them, so a zone row reads its
+        // own takeoffs (signed below) and the no-zone row reads what is left outside.
         let ts: Vec<&Row> = groups
             .get(&gk)
             .into_iter()
             .flatten()
             .map(|&i| &data.tks[i])
             .collect();
+        // Nothing left outside the zone: the no-zone row of a zone row must store zero.
+        let has_zone_sibling = zone.is_empty()
+            && ts.is_empty()
+            && zone_sibling.contains(&(gk.1.clone(), gk.3.clone(), gk.4.clone(), gk.5.clone()));
+        let zsign = if zone_neg.get(zone) == Some(&true) {
+            -1.0
+        } else {
+            1.0
+        };
         let vals = results(&data, c, &ts);
         let mut row_ok = true;
         let (mut compared, mut matched, mut stray) = (0, 0, false);

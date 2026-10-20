@@ -5,6 +5,9 @@
 
 use crate::scale::Scale;
 
+/// A point (x, y).
+pub type Point = (f64, f64);
+
 /// Rise over run, for example 4 and 12 for a 4:12 slope.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Slope {
@@ -93,6 +96,46 @@ pub fn arc_length(chord: f64, sagitta: f64) -> f64 {
     r * theta
 }
 
+/// One OST linear takeoff position (the numbers of `BidTakeoffs.Position`) as start, end
+/// and signed sagitta. Two layouts exist: `x1;y1;x2;y2;s` and `x1;y1;x2;y2;px;py;s`. In the
+/// seven-number form the fifth and sixth numbers are a point (a rotation pivot on rotated
+/// takeoffs, a point near the arc on curved ones), never the sagitta.
+// Evidence: 2635 rotated straight segments in JC's databases carry a pivot far off the
+// segment in numbers five and six; reading it as a sagitta turned 8 segments of 16 in
+// (OST total 128 in) into 35290 in (docs/study/formats/ost-quantities.md).
+pub fn ost_segment(v: &[f64]) -> Option<(Point, Point, f64)> {
+    if v.len() < 4 {
+        return None;
+    }
+    let sag = match v.len() {
+        n if n >= 7 => v[6],
+        5 | 6 => v[4],
+        _ => 0.0,
+    };
+    Some(((v[0], v[1]), (v[2], v[3]), sag))
+}
+
+/// True when every point lies inside a closed ring (even-odd rule). OST credits a takeoff
+/// with no zone of its own to the zone whose outline holds it; any condition type.
+// Evidence: 24 zone rows in JC's databases (linear and area) equal the takeoffs inside the
+// zone outline on that page, and the page row without a zone then stores 0
+// (docs/study/formats/ost-quantities.md).
+// shortcut: a takeoff that crosses the outline is treated as outside; no such case in the
+// data, revisit if OST is seen splitting a takeoff at a zone edge.
+pub fn points_inside(points: &[Point], ring: &[Point]) -> bool {
+    let inside = |&(x, y): &Point| {
+        let mut c = false;
+        for (i, &(x1, y1)) in ring.iter().enumerate() {
+            let (x2, y2) = ring[(i + 1) % ring.len()];
+            if (y1 > y) != (y2 > y) && x < (x2 - x1) * (y - y1) / (y2 - y1) + x1 {
+                c = !c;
+            }
+        }
+        c
+    };
+    !points.is_empty() && points.iter().all(inside)
+}
+
 /// Total drawn length in page points with optional per-segment arc heights.
 fn drawn_points(points: &[(f64, f64)], sagittas: &[f64]) -> f64 {
     points
@@ -129,7 +172,9 @@ pub fn linear_results(input: &LinearInput) -> Result<LinearResults, LinearError>
     }
     // unknown: U-03 how drops affect area and volume; here they are part of L everywhere.
     // unknown: whether openings reduce results other than length and side areas (no data).
-    // unknown: U-04 end areas are a single H*T, not multiplied by segment count.
+    // End areas are per segment: OST stored code 8 (both ends) as 2 * H * T * 2 for a run of
+    // two segments (sample database). One end (code 7) has no data; assumed H * T per segment.
+    // Callers pass one segment per call, so H * T here is already per segment.
     Ok(LinearResults {
         length: l - cut_len,
         segment_count: input.points.len().saturating_sub(1),
@@ -184,6 +229,32 @@ mod tests {
         assert!((arc_length(20.0, -10.0) - std::f64::consts::PI * 10.0).abs() < 1e-9);
         assert_eq!(arc_length(20.0, 0.0), 20.0);
         assert!(arc_length(20.0, 15.0) > std::f64::consts::PI * 10.0);
+    }
+
+    // OST answer key (JC's databases): a rotated straight segment stores a pivot in numbers
+    // five and six and its sagitta last; a five-number position keeps the sagitta fifth.
+    #[test]
+    fn ost_segment_layouts() {
+        let rotated = [943.486, 774.299, 943.486, 790.299, 1875.531, 1564.593, 0.0];
+        let (a, b, s) = ost_segment(&rotated).unwrap();
+        assert_eq!((a, b, s), ((943.486, 774.299), (943.486, 790.299), 0.0));
+        let curved = [
+            2365.864, 1656.908, 2331.301, 1618.057, 2357.033, 1633.356, -9.056,
+        ];
+        assert_eq!(ost_segment(&curved).unwrap().2, -9.056);
+        assert_eq!(ost_segment(&[0.0, 0.0, 20.0, 0.0, 10.0]).unwrap().2, 10.0);
+        assert_eq!(ost_segment(&[0.0, 0.0, 20.0, 0.0]).unwrap().2, 0.0);
+        assert!(ost_segment(&[1.0, 2.0]).is_none());
+    }
+
+    // OST answer key (JC's databases): zone membership needs every point inside the outline.
+    #[test]
+    fn points_inside_zone_outline() {
+        let ring = [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)];
+        assert!(points_inside(&[(10.0, 10.0), (90.0, 40.0)], &ring));
+        assert!(!points_inside(&[(10.0, 10.0), (150.0, 40.0)], &ring));
+        assert!(!points_inside(&[(-5.0, 10.0), (-1.0, 40.0)], &ring));
+        assert!(!points_inside(&[], &ring));
     }
 
     // OST answer key: drops add to length (OST-05-017 resolved: L = segments + drops).
