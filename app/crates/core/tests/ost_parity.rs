@@ -264,14 +264,25 @@ fn ost_answer_key_parity() {
             f("BidConditionUID"),
         )
     };
+    let zone_neg: HashMap<String, bool> = load(dir, "zones.csv")
+        .iter()
+        .map(|r| (s(r, "UID").to_string(), s(r, "IsNegativeValues") == "1"))
+        .collect();
+    // Zone rows by (page, area, typical, condition): see the zone rule in
+    // docs/study/formats/ost-quantities.md.
+    let zone_sibling: std::collections::HashSet<_> = totals
+        .iter()
+        .filter(|r| !s(r, "BidZoneUID").is_empty())
+        .map(|r| key(r, s(r, "BidAreaUID")))
+        .map(|k| (k.1, k.3, k.4, k.5))
+        .collect();
     let uid_bid: HashMap<&str, &str> = tks.iter().map(|t| (s(t, "UID"), s(t, "BidUID"))).collect();
     let mut groups: HashMap<_, Vec<usize>> = HashMap::new();
     let mut kids: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, t) in tks.iter().enumerate() {
-        groups
-            .entry(key(t, s(t, "BidAreaUID")))
-            .or_default()
-            .push(i);
+        let mut k = key(t, s(t, "BidAreaUID"));
+        k.2.clear(); // zone is a region, not a takeoff attribute
+        groups.entry(k).or_default().push(i);
         let p = s(t, "ParentUID");
         // A parent UID from another bid is a stale copy link; OST ignores that child.
         if !p.is_empty() && uid_bid.get(p) == Some(&s(t, "BidUID")) {
@@ -285,6 +296,8 @@ fn ost_answer_key_parity() {
     let mut misses: HashMap<&str, Vec<(f64, String)>> = HashMap::new();
     let mut unmodeled: HashMap<(String, String), usize> = HashMap::new();
     let mut sum_differs = 0;
+    // Rows OST left stale: reported on their own, never counted as our mismatch.
+    let (mut stale, mut stale_notes) = (0, Vec::<String>::new());
     for tot in &totals {
         let c = &data.conds[s(tot, "BidConditionUID")];
         let ty = type_name(s(c, "Type"));
@@ -298,27 +311,50 @@ fn ost_answer_key_parity() {
             ),
             (a, _) => (a, 1.0),
         };
+        let zone = s(tot, "BidZoneUID");
+        let mut gk = key(tot, area);
+        // Zones are drawn regions on a page; the takeoffs carry no zone id. A zone row holds
+        // the whole (signed) quantity of its page and condition, so it reads the zone-free group.
+        gk.2.clear();
+        let has_zone_sibling = zone.is_empty()
+            && zone_sibling.contains(&(gk.1.clone(), gk.3.clone(), gk.4.clone(), gk.5.clone()));
+        let zsign = if zone_neg.get(zone) == Some(&true) {
+            -1.0
+        } else {
+            1.0
+        };
         let ts: Vec<&Row> = groups
-            .get(&key(tot, area))
+            .get(&gk)
             .into_iter()
             .flatten()
             .map(|&i| &data.tks[i])
             .collect();
         let vals = results(&data, c, &ts);
-        let st = stats.entry(ty).or_default();
         let mut row_ok = true;
+        let (mut compared, mut matched, mut stray) = (0, 0, false);
+        let mut row_misses: Vec<(f64, String)> = Vec::new();
         for i in 1..=3 {
+            let q = num(tot, &format!("Quantity{i}"));
+            let sq = num(tot, &format!("SumQuantity{i}"));
             if s(c, &format!("UOM{i}")) == "-1" {
+                // A value in a slot the condition no longer uses: OST stored this row under
+                // an older definition of the condition (see the stale rule in the format notes).
+                stray |= q != 0.0 || sq != 0.0;
                 continue;
             }
             let code = s(c, &format!("Quantity{i}"));
-            let q = num(tot, &format!("Quantity{i}"));
-            if (q - num(tot, &format!("SumQuantity{i}"))).abs() > 1e-9 {
+            if (q - sq).abs() > 1e-9 {
                 sum_differs += 1;
             }
-            st[0] += 1;
+            compared += 1;
+            if has_zone_sibling {
+                // The zone row took everything; this row keeps the remainder, which is zero.
+                matched += usize::from(q.abs() <= 0.01);
+                row_ok &= q.abs() <= 0.01;
+                continue;
+            }
             let p = match vals.get(&code.parse().unwrap_or(u32::MAX)) {
-                Some(Some(v)) => v * mult,
+                Some(Some(v)) => v * mult * zsign,
                 _ => {
                     *unmodeled
                         .entry((ty.to_string(), code.to_string()))
@@ -329,20 +365,28 @@ fn ost_answer_key_parity() {
             };
             let err = (p - q).abs();
             if err <= 0.01 || err <= 0.01 * q.abs() {
-                st[1] += 1;
+                matched += 1;
             } else {
                 row_ok = false;
-                let rel = err / q.abs().max(1e-9);
                 let note = format!(
                     "total {} cond {} code {code}: OST {q:.3} ours {p:.3}",
                     s(tot, "UID"),
                     s(c, "UID")
                 );
-                misses.entry(ty).or_default().push((rel, note));
+                row_misses.push((err / q.abs().max(1e-9), note));
             }
         }
+        if stray && !row_misses.is_empty() {
+            stale += 1;
+            stale_notes.extend(row_misses.into_iter().map(|m| m.1));
+            continue;
+        }
+        let st = stats.entry(ty).or_default();
+        st[0] += compared;
+        st[1] += matched;
         st[2] += 1;
         st[3] += usize::from(row_ok);
+        misses.entry(ty).or_default().extend(row_misses);
     }
 
     println!(
@@ -377,6 +421,10 @@ fn ost_answer_key_parity() {
     }
     println!("  total: rows {rows} matched {rows_ok} | quantities {slots} matched {ok}");
     println!("  rows where SumQuantity differs from Quantity: {sum_differs}");
+    println!("  stale in OST (excluded above): {stale} rows");
+    for n in stale_notes.iter().take(5) {
+        println!("      {n}");
+    }
 
     // Regression guard: every modeled quantity must match (unmodeled codes are reported).
     let modeled = slots - unmodeled.values().sum::<usize>();

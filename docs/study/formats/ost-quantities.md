@@ -151,3 +151,41 @@ Tolerance 0.01 absolute or 1% relative, per stored quantity.
   inches, so the point origin or the custom scale reading may differ there.
 - Sheet placement of points (origin corner, axis direction, rotation) is not yet checked
   against a rendered PDF.
+
+## Rows where OST stores zero (zones and stale rows)
+
+Checked 2026-10-20 on all 16 of JC's job databases. Two separate causes, neither related to
+hidden pages, hidden layers, template conditions or the show-takeoff flag (those only change
+what is drawn; their totals are stored normally), and no bid in the corpus has the recalc flag
+set.
+
+Zone rule (explains every "OST 0, ours big" row in JC_Commercial and JOHN_CP, 57 rows):
+- A zone is a region drawn on a page, not an attribute of a takeoff. Takeoff rows carry an
+  empty zone id even when OST puts their quantity under a zone.
+- When a page and condition has a zone totals row, that row holds the whole quantity of the
+  page and condition, with the sign flipped if the zone is marked negative (IsNegativeValues).
+  The sibling row with no zone then stores Quantity 0 for every slot (nothing is left over
+  in these jobs) and keeps the real number in SumQuantity, as the sum of itself and its zone
+  rows. Zone rows themselves store SumQuantity 0.
+- This is the whole meaning of SumQuantity differing from Quantity: 102 slots in
+  JC_Commercial and 12 in JOHN_CP, all of them zone siblings. No other database has a
+  difference except stale rows below.
+- Harness: takeoffs are grouped without their zone id, a zone row is compared against the
+  signed whole group, and a sibling of a zone row must store zero. Leftover quantity outside
+  a zone is not modeled because zone geometry is unknown; every sibling in the corpus is zero.
+  Earlier these zone rows were "not modeled" or showed as a large OST 0 versus ours mismatch.
+
+Stale rows (3 rows, all in OST_Projects__20252, count and attached-count conditions):
+- OST stored 0 in every used slot but a non-zero value in SumQuantity of a slot whose unit is
+  "unused" (-1), for example Sum3 equal to the takeoff count. A value in an unused slot means
+  the row was written under an older definition of the condition and never refreshed.
+  Normal count rows always have Sum equal to Quantity and nothing in unused slots.
+- Evidence this is not our math: the takeoffs exist and the sibling rows on the same page
+  match; the row cannot be reproduced from the condition as it is stored now.
+- Harness: a row with a mismatch and a non-zero value in an unused slot is reported as
+  "stale in OST" and left out of the compared rows and quantities.
+
+Not found: the brief also named 102 SumQuantity differences in OST_Projects__20252. In the
+re-export that database has none; the 102 belong to JC_Commercial (zone siblings above).
+Exporter now also writes layers.csv and the flags RecalcNeeded, page Show, condition
+IsTemplate, ShowTakeoff and BidLayerUID so these rules can be re-tested.

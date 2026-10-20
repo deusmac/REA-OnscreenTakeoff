@@ -44,15 +44,16 @@ function Save([System.Data.DataTable]$t, [string]$name) {
     "{0,-16} {1,6} rows" -f $name, $t.Rows.Count
 }
 
-Save (Query 'SELECT UID, MeasureBase, ScaleStyle, IsCustomScale, ScaleFactor1, ScaleFactor2, PageScale, TakeoffIncrements, TypicalType, IgnoreBidAreas FROM Bids') 'bids.csv'
-Save (Query 'SELECT UID, BidUID, ScaleStyle, IsCustomScale, ScaleFactor1, ScaleFactor2, Scale, Width, Height, Rotation, MasterPageUID, TypicalPageRepeats FROM BidPages') 'pages.csv'
+Save (Query 'SELECT UID, MeasureBase, ScaleStyle, IsCustomScale, ScaleFactor1, ScaleFactor2, PageScale, TakeoffIncrements, TypicalType, IgnoreBidAreas, RecalcNeeded, IsCalculatedForSlope, IsCalculatedForLaborCostCodeTotals FROM Bids') 'bids.csv'
+Save (Query 'SELECT UID, BidUID, ScaleStyle, IsCustomScale, ScaleFactor1, ScaleFactor2, Scale, Width, Height, Rotation, MasterPageUID, TypicalPageRepeats, Show FROM BidPages') 'pages.csv'
 Save (Query 'SELECT UID, BidUID, IsNegativeValues FROM BidZones') 'zones.csv'
 Save (Query 'SELECT UID, BidUID, ParentUID FROM BidAreas') 'areas.csv'
+Save (Query 'SELECT UID, BidUID, IsTemplate, Show, IsLocked FROM BidLayers') 'layers.csv'
 Save (Query 'SELECT UID, BidAreaUID, BidTypAreaUID, [Count] FROM BidTypAreaCounts') 'typareacounts.csv'
 Save (Query ('SELECT UID, BidUID, Type, Shape, Width, Height, Spacing, Thickness, Rise, Run, Depth, ' +
     'UOM1, UOM2, UOM3, Quantity1, Quantity2, Quantity3, RoundUp, RoundQuantity, Backout, DropRun, DropValue, ' +
     'Grid, GridSize1, GridSize2, Gap, ManualLength, Curve, IsCurvedSegment, BFperLF, ' +
-    'DirectQuantity1, DirectQuantity2, DirectQuantity3 FROM BidConditions')) 'conditions.csv'
+    'DirectQuantity1, DirectQuantity2, DirectQuantity3, BidLayerUID, IsTemplate, ShowTakeoff FROM BidConditions')) 'conditions.csv'
 Save (Query 'SELECT * FROM BidTakeoffTotals') 'totals.csv'
 
 # Takeoffs: Position is a Binary column holding ASCII text (see
