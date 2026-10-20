@@ -238,8 +238,20 @@ Anything a non-developer will use gets, before it is called finished:
   (`docs/screens/m2-summary-full.png`). The .osp XML carries no stored totals and its zone
   and typical-area sections are empty in all 37 packages, so those rules are untested on
   packages (they work on the databases).
-- Next: TIFF plan pages show blank; attachments, Round Quantity on linear, typical-page
-  repeats not modeled; editing takeoffs (M3/M4); QuickBid bid-total formula.
+- M3/M4 shipped (desktop split into doc, geom, project, tools, viewer, conditions_ui):
+  New project from PDF, Open/Save/Save As .reaproj (plans from an .osp go to
+  <project>_plans next to it), unsaved-changes prompt, page scale presets and Calibrate,
+  conditions panel (new, edit, duplicate, delete), draw linear/area/count with the left
+  mouse, Select (V) with hit test, Delete, vertex drag, Ctrl+Z/Ctrl+Y, live Summary.
+  Verified in the release build on Sweat 440 (`docs/screens/m3-*.png`), 15 desktop tests.
+  Security: plan paths from project/job files must be local absolute paths (no \\server,
+  no ..), `project::local_plan_path`.
+- Broke: during the real-app test some synthetic clicks landed in JC's QuickBid window;
+  JC told to check that job. Drive the app only when it is verified to be in front.
+- Next: .reaproj does not yet store arcs, grid sizes, zones, typical areas, parent links
+  and unnamed result codes, so an .osp saved as .reaproj drifts on those rows; backouts,
+  snap, rectangle drag, multi-select, copy/move not built; TIFF pages blank; QuickBid
+  bid-total formula.
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`
