@@ -24,9 +24,10 @@ job data is in the repo.
 separated by `;`, ending in a line feed. No UTF-16, no packed floats. Layout by condition
 type (`BidConditions.Type`):
 
-- Type 0, linear: one takeoff is one segment: `x1;y1;x2;y2;s` where `s` is the signed arc
-  height (sagitta) of a curved segment, 0 for straight. 627 takeoffs carry two extra
-  trailing zeros (`x1;y1;x2;y2;0;0;0`); they did not change any total. A drawn run with N
+- Type 0, linear: one takeoff is one segment, in one of two layouts: `x1;y1;x2;y2;s` or
+  `x1;y1;x2;y2;px;py;s`. `s` is the signed arc height (sagitta) of a curved segment, 0 for
+  straight, and it is always the last number. In the seven-number layout `px;py` is a point,
+  not the sagitta (see "Linear rules from JC's databases" below). A drawn run with N
   segments is N takeoff rows.
 - Type 1, area: `x;y;x;y;...` one closed ring, first point not repeated.
 - Type 2, count: `x;y`.
@@ -73,7 +74,9 @@ Linear (type 0):
 - 5 Top or bottom: T * L (2).
 - 9 All sides: 2 * (H + T) * L (8).
 - 20 Volume: H * T * L (7).
-- 6, 7, 8 (top and bottom, one end, both ends) were not used by any condition.
+- 8 Both ends: 2 * H * T per segment (2 rows in two copies of the sample database: a
+  two-segment run stored 2 * 180 * 4 * 2 = 2880).
+- 6 and 7 (top and bottom, one end) were not used by any condition in any database.
 
 Area (type 1):
 - 11 Area: (A - BA) * slope factor (244).
@@ -155,6 +158,46 @@ Checked against all 16 job databases (count 5170 of 5173 quantities, attached co
   database has count totals where OST stores 0 and takeoffs exist, which is a different
   problem (rows OST did not refresh).
 
+## Linear rules from JC's databases (2026-10-20)
+
+Checked on the 16 job databases in JC's corpus (14 with totals rows, 26,001 stored linear
+quantities). Before these rules linear matched 25,367 (97.6%); after, 25,946 (99.8%). After
+the re-export and the stale-row bucket, 25,946 of 26,000 compared.
+
+- Seven-number positions. 164,624 linear takeoffs use `x1;y1;x2;y2;px;py;s`. On 2,636
+  rotated takeoffs (`Rotation` not 0) `px;py` is the rotation pivot, often far from the
+  segment; on 234 curved ones it is a point near the arc. Reading `px` as the sagitta made a
+  16 in segment into a near-full circle: 8 such segments stored 128 in, and we got 35,290.
+  The sagitta is the last number in both layouts. This one rule fixed the worst rows in
+  OST_Projects 20252 (ratios up to 215) and most misses in JC_Commercial.
+- Typical groups. A takeoff with `TypGroupUID` set is not part of `BidTakeoffTotals`. Pages
+  that hold only typical-group takeoffs have no totals rows for them at all, and on 5 rows
+  that mix both kinds, the stored total is exactly the takeoffs without a typical group
+  (for example 91.6 in from one plain segment beside 26 typical-group segments). Those
+  quantities probably live in `BidTypicalGroupTotals` (empty in every database read so
+  far). The harness applies it to every type; it also fixed 12 area quantities.
+- Zone outlines. The zone region of the zero-rows section below is stored as a takeoff
+  with a zone id and no condition; its points are the zone ring. Every takeoff behind the
+  24 zone rows in the corpus (20 linear, 4 area) lies fully inside its page's ring, so the
+  harness now assigns each takeoff to the zone whose ring holds all its points (its own
+  `BidZoneUID` wins when set). A zone row reads the takeoffs inside, signed by
+  `IsNegativeValues`; the no-zone row reads the rest, which is empty in every case and so
+  stores 0. No takeoff crosses an outline, so how OST splits one is unknown.
+
+Residuals (55 quantities, none explained by geometry):
+
+- Stale heights (48 quantities in OST_Projects 20252 and JC_Commercial). Length matches
+  but side area equals length times a different round height (36, 42, 132, 146, 456 in
+  where the condition now says 48, 60, 144, 156 or 480). One condition has two rows, one
+  at its current height and one at an earlier one, so OST kept the old total on rows it
+  did not recompute. Nothing in the database holds the earlier height.
+- One JC_Commercial row is 300 in longer in our sum than stored, with area consistent
+  with the stored length; likely also stale.
+- One OST_Projects 20252 row stores 175,161 in for 409 in of segments, plus nonzero values
+  in its two unused slots (the condition was likely changed after takeoff).
+- One JOHN_CP row with no takeoffs left for its condition on that page (deleted takeoffs,
+  stored total kept).
+
 ## Open items
 
 - Grid length (area code 16). Clipping grid lines at GridSize1 and GridSize2 spacing to the
@@ -163,7 +206,7 @@ Checked against all 16 job databases (count 5170 of 5173 quantities, attached co
   GridOffsetX/GridOffsetY. Hypotheses: the origin is the page or the area center, the
   takeoff's GridRotation rotates the lines, the perimeter is subtracted or added, or Gap
   (one row) shortens lines at each crossing.
-- Codes with no data in the sample: linear 6, 7, 8; area 18 (likely visible tile count);
+- Codes with no data in the sample: linear 6, 7; area 18 (likely visible tile count);
   count 26. Attachments (area AA, AL, AV) have no rows either.
 - Whether openings change linear results other than length and side areas, whether slope
   applies to drops, and whether slope applies to backout areas: no sample row tells.
@@ -191,9 +234,9 @@ Zone rule (explains every "OST 0, ours big" row in JC_Commercial and JOHN_CP, 57
 - This is the whole meaning of SumQuantity differing from Quantity: 102 slots in
   JC_Commercial and 12 in JOHN_CP, all of them zone siblings. No other database has a
   difference except stale rows below.
-- Harness: takeoffs are grouped without their zone id, a zone row is compared against the
-  signed whole group, and a sibling of a zone row must store zero. Leftover quantity outside
-  a zone is not modeled because zone geometry is unknown; every sibling in the corpus is zero.
+- Harness: each takeoff gets the zone whose outline holds it (see "Zone outlines" under the
+  linear rules), a zone row is compared against its signed takeoffs, and a sibling with no
+  takeoffs left must store zero. Every sibling in the corpus is zero.
   Earlier these zone rows were "not modeled" or showed as a large OST 0 versus ours mismatch.
 
 Stale rows (3 rows, all in OST_Projects__20252, count and attached-count conditions):
