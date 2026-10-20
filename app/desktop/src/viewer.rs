@@ -60,7 +60,12 @@ impl Viewer {
             .iter()
             .map(|p| {
                 *by_path.entry(&p.file_path).or_insert_with(|| {
-                    match PlanFile::open(Path::new(&p.file_path)) {
+                    let opened = if crate::project::local_plan_path(&p.file_path) {
+                        PlanFile::open(Path::new(&p.file_path)).ok()
+                    } else {
+                        None
+                    };
+                    match opened.ok_or(()) {
                         Ok(f) => {
                             files.push(f);
                             Some(files.len() - 1)

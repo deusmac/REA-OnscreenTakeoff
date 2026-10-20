@@ -164,7 +164,10 @@ pub fn save(doc: &mut Doc, path: &Path, unpacked: Option<&Path>) -> Result<(), S
         let mut moved = HashMap::new();
         for p in &doc.pages {
             let from = Path::new(&p.file_path);
-            if !from.starts_with(tmp) || moved.contains_key(&p.file_path) {
+            if !local_plan_path(&p.file_path)
+                || !from.starts_with(tmp)
+                || moved.contains_key(&p.file_path)
+            {
                 continue;
             }
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -241,5 +244,33 @@ mod tests {
         let r = open_reaproj(&path).unwrap();
         assert!(r.pages.iter().all(|p| Path::new(&p.file_path) == moved));
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// Plan paths come from project and job files, which may come from someone else: only open
+/// local absolute paths. A `\\server\share` (or `\\?\`) path would make Windows send the
+/// user's login to that server, and `..` could step out of the expected folder.
+pub(crate) fn local_plan_path(p: &str) -> bool {
+    let path = Path::new(p);
+    !p.starts_with("\\\\")
+        && !p.starts_with("//")
+        && path.is_absolute()
+        && !path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+#[cfg(test)]
+mod plan_path_tests {
+    use super::local_plan_path;
+
+    #[test]
+    fn rejects_unc_device_relative_and_parent_paths() {
+        assert!(local_plan_path(r"E:\jobs\plans.pdf"));
+        assert!(!local_plan_path(r"\\attacker\share\plans.pdf"));
+        assert!(!local_plan_path(r"\\?\C:\plans.pdf"));
+        assert!(!local_plan_path("//attacker/share/plans.pdf"));
+        assert!(!local_plan_path(r"plans.pdf"));
+        assert!(!local_plan_path(r"C:\temp\opentakeoff\..\..\secret.pdf"));
     }
 }
