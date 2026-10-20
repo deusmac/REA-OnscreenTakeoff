@@ -219,9 +219,15 @@ Anything a non-developer will use gets, before it is called finished:
   stored quantities): 97.3% match. Count 99.6%, type-4 count 100%, attached 98.4%,
   linear 97.6%, area 90.5%. Scan tools: `cargo run --release -p rea-ost --example scan --
   <folder>` and the same for `rea-quickbid`. Per-database results: answer-keys\*\parity.txt.
-- Next: close the parity gaps (gridded area rounds partial tiles up and needs the grid
-  origin; rows where OST stores 0 but we compute a value, probably stale totals; a few huge
-  linear overcounts; count perimeter code 13); QuickBid bid-total formula; M2 UI.
+- Parity gaps closed by four parallel agents (rules in `docs/study/formats/ost-quantities.md`):
+  Round Quantity (per-edge round-up walk) and grid origin at the area centroid (codes 16,
+  18); zones (a zone row holds the quantity, its no-zone sibling stores 0) and stale rows;
+  linear arc height is the last position number, typical-group takeoffs are not in page
+  totals; count shape 12 perimeter and codes 25, 26. Parity over all 16 databases:
+  46,089 of 46,173 (99.82%). Count 100%, type 4 100%, linear 99.79%, area 99.55%, attached
+  99.53%. Residuals are mostly rows OST never recalculated; list in the notes.
+- Next: a few Round Quantity shapes with a slanted closing edge, tile count with a backout,
+  Round Quantity on linear; QuickBid bid-total formula; M2 UI (open .osp in the viewer).
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`

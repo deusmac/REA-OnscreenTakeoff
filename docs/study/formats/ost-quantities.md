@@ -250,21 +250,11 @@ Residuals (55 quantities, none explained by geometry):
 
 ## Open items
 
-<<<<<<< HEAD
-- Grid length (area code 16). Clipping grid lines at GridSize1 and GridSize2 spacing to the
-  area gets within about 1 to 7% but never exact. Candidates tried for the grid origin:
-  world zero, the area's bounding-box corner, its first vertex, each plus
-  GridOffsetX/GridOffsetY. Hypotheses: the origin is the page or the area center, the
-  takeoff's GridRotation rotates the lines, the perimeter is subtracted or added, or Gap
-  (one row) shortens lines at each crossing.
-- Codes with no data in the sample: linear 6, 7; area 18 (likely visible tile count);
-  count 26. Attachments (area AA, AL, AV) have no rows either.
-=======
 - Round Quantity area on some non-rectangular shapes, and tile count with a backout; see
   the residual list in "Gridded areas and Round Quantity".
 - Round Quantity on linear conditions (seen on 4 linear conditions) is not checked yet.
-- Codes with no data in the sample: linear 6, 7, 8; count 26. Attachments (area AA, AL, AV) have no rows either.
->>>>>>> refs/heads/worktree-agent-grid-area
+- Codes no condition uses in JC's databases: linear 6, 7. Attachments (area AA, AL, AV) have
+  no rows either.
 - Whether openings change linear results other than length and side areas, whether slope
   applies to drops, and whether slope applies to backout areas: no sample row tells.
 - UOM code 1: a length unit used only for count Total Height.
