@@ -8,6 +8,7 @@ use rea_core::model::{Condition, Id};
 use rea_core::ost_totals::{bid_totals, condition_totals, display_unit, OstCondition, OstJob};
 
 pub struct SummaryRow {
+    pub id: Id,
     pub number: i64,
     pub name: String,
     pub color: [u8; 3],
@@ -23,6 +24,7 @@ pub fn summary(conditions: &[Condition], job: &OstJob) -> Vec<SummaryRow> {
         .map(|c| {
             let t = totals.get(&c.id);
             SummaryRow {
+                id: c.id,
                 number: c.number,
                 name: c.name.clone(),
                 color: c.color,

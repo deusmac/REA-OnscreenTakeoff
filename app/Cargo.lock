@@ -2855,6 +2855,7 @@ dependencies = [
  "rea-core",
  "rea-ost",
  "rea-pdf",
+ "rea-store",
  "rfd",
 ]
 
