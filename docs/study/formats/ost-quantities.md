@@ -134,6 +134,27 @@ Tolerance 0.01 absolute or 1% relative, per stored quantity.
 - Attached count: 98 of 98 quantities, 75 of 75 rows.
 - Total: 1962 of 1971 quantities, 1244 of 1253 rows.
 
+## Count and attached count: codes 13, 25, 26 and stale rows (2026-10-20)
+
+Checked against all 16 job databases (count 5170 of 5173 quantities, attached count 423 of
+425 after these rules).
+
+- Code 25 is C * W * H (one width side) and code 26 is 2 * C * W * H (both width sides).
+  Depth never enters: a 36 x 84 object stores 3024 and 6048, a 60 x 84 x 12 object stores
+  10080 for code 26, and attached 108 x 132 stores 14256 for code 25. Both are the width
+  side results we already had under other names.
+- Count shape 12 has a perimeter (code 13) of 4 * W / sqrt(3) per object, not 2 * (W + D):
+  20 objects of W 36, H 216, D 0 store 1662.769 (two conditions, same numbers). Which
+  figure shape 12 is stays unknown; only this perimeter is evidenced, so other results for it
+  use the generic formulas.
+- Code 13 for shape 0 (square) is 4 * W and for shape 3 (rectangle) is 2 * (W + D); both
+  held in every row.
+- Two attached count total rows (one each for a 312 x 120 and a 216 x 120 opening on one page)
+  store a count of 1 but their conditions have no takeoff rows at all. That is a stale total
+  OST kept after its takeoffs went; nothing in the takeoffs can reproduce it. The same
+  database has count totals where OST stores 0 and takeoffs exist, which is a different
+  problem (rows OST did not refresh).
+
 ## Open items
 
 - Grid length (area code 16). Clipping grid lines at GridSize1 and GridSize2 spacing to the

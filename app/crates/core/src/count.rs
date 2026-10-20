@@ -19,6 +19,8 @@ pub enum CountShape {
     Hexagon,
     Octagon,
     Rectangle,
+    /// OST shape id 12. Identity unknown (U-06); only its perimeter is evidenced: 4 * W / sqrt(3).
+    Shape12,
 }
 
 /// Dimensions of one counted object, in inches.
@@ -28,6 +30,8 @@ pub struct CountDims {
     pub width: f64,
     pub depth: f64,
     pub round: bool,
+    /// Perimeter of one object; 2 * (W + D) unless the shape says otherwise.
+    pub perimeter_each: f64,
 }
 
 impl CountDims {
@@ -43,6 +47,11 @@ impl CountDims {
             width,
             depth,
             round: shape == CountShape::Circle,
+            perimeter_each: if shape == CountShape::Shape12 {
+                4.0 * width / 3f64.sqrt()
+            } else {
+                2.0 * (width + depth)
+            },
         }
     }
 }
@@ -80,7 +89,7 @@ pub fn count_results(count: f64, d: CountDims) -> CountResults {
     CountResults {
         count: c,
         total_height: c * h,
-        perimeter: c * 2.0 * (w + dp),
+        perimeter: c * d.perimeter_each,
         top_or_bottom: c * w * dp,
         top_and_bottom: c * 2.0 * w * dp,
         width_side: c * h * w,
@@ -161,6 +170,23 @@ mod tests {
         // OST answer key: 77 round columns, 108 in tall, 12 in across give 940517.44 cu in.
         let r = count_results(77.0, CountDims::new(CountShape::Circle, 108.0, 12.0, 0.0));
         assert!((r.volume - 940_517.442).abs() < 1e-3);
+    }
+
+    #[test]
+    fn shape_12_perimeter() {
+        // OST answer key (JC Commercial 2026, conds 1848 and 2101): 20 objects, W 36, H 216,
+        // D 0 store perimeter 1662.769 in, which is 20 * 4 * 36 / sqrt(3).
+        let r = count_results(20.0, CountDims::new(CountShape::Shape12, 216.0, 36.0, 0.0));
+        assert!((r.perimeter - 1662.769).abs() < 1e-3);
+    }
+
+    #[test]
+    fn width_side_codes() {
+        // OST answer key codes 25 and 26: a 36 x 84 object stores 3024 and 6048 (W * H and
+        // 2 * W * H); a 60 x 84 x 12 object stores 10080 for code 26, so depth is unused.
+        let r = count_results(1.0, CountDims::new(CountShape::Rectangle, 84.0, 60.0, 12.0));
+        assert_eq!(r.width_side, 5040.0);
+        assert_eq!(r.both_width_sides, 10080.0);
     }
 
     #[test]

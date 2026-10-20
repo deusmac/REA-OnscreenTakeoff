@@ -194,6 +194,7 @@ fn results(d: &Data, c: &Row, ts: &[&Row]) -> HashMap<u32, Option<f64>> {
             let shape = match s(c, "Shape") {
                 "1" => CountShape::Circle,
                 "3" => CountShape::Rectangle,
+                "12" => CountShape::Shape12,
                 _ => CountShape::Square,
             };
             let r = count_results(
@@ -205,6 +206,8 @@ fn results(d: &Data, c: &Row, ts: &[&Row]) -> HashMap<u32, Option<f64>> {
                 (24, r.total_height),
                 (5, r.top_or_bottom),
                 (13, r.perimeter),
+                (25, r.width_side),
+                (26, r.both_width_sides),
                 (20, r.volume),
                 (31, r.opening_perimeter_four_sides),
                 (32, r.opening_perimeter_three_sides),
