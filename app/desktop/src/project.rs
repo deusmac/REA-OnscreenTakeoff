@@ -251,13 +251,12 @@ mod tests {
 /// local absolute paths. A `\\server\share` (or `\\?\`) path would make Windows send the
 /// user's login to that server, and `..` could step out of the expected folder.
 pub(crate) fn local_plan_path(p: &str) -> bool {
+    use std::path::{Component, Prefix};
     let path = Path::new(p);
-    !p.starts_with("\\\\")
-        && !p.starts_with("//")
+    // Only a drive letter prefix (C:\); UNC, verbatim and device prefixes in any slash mix fail.
+    matches!(path.components().next(), Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_)))
         && path.is_absolute()
-        && !path
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
+        && !path.components().any(|c| matches!(c, Component::ParentDir))
 }
 
 #[cfg(test)]
@@ -270,6 +269,9 @@ mod plan_path_tests {
         assert!(!local_plan_path(r"\\attacker\share\plans.pdf"));
         assert!(!local_plan_path(r"\\?\C:\plans.pdf"));
         assert!(!local_plan_path("//attacker/share/plans.pdf"));
+        assert!(!local_plan_path(r"/\attacker\share\plans.pdf"));
+        assert!(!local_plan_path(r"\/attacker/share/plans.pdf"));
+        assert!(!local_plan_path(r"\\.\C:\plans.pdf"));
         assert!(!local_plan_path(r"plans.pdf"));
         assert!(!local_plan_path(r"C:\temp\opentakeoff\..\..\secret.pdf"));
     }
