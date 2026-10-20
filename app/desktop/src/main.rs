@@ -1,11 +1,17 @@
 // Hide the console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod quantities;
+
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Color32, Pos2, Rect, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
+use rea_core::model::{Geometry, Id};
 use rea_pdf::{Image, PlanFile};
+
+use quantities::SummaryRow;
 
 /// Longest side, in pixels, of the low-detail whole-page image shown while zooming and panning.
 const BASE_PX: f32 = 2048.0;
@@ -22,7 +28,7 @@ fn main() -> eframe::Result {
             .with_min_inner_size([900.0, 600.0]),
         ..Default::default()
     };
-    // A PDF path on the command line opens straight away.
+    // A PDF or OST package path on the command line opens straight away.
     let start = std::env::args_os().nth(1).map(PathBuf::from);
     eframe::run_native(
         "OpenTakeoff",
@@ -43,9 +49,24 @@ struct TakeoffApp {
     error: Option<String>,
 }
 
+/// One page in the page list: where its image comes from and what is drawn on it.
+struct Sheet {
+    /// Index into `Plan::files`; `None` when the plan file is not available.
+    file: Option<usize>,
+    /// Page index inside that file.
+    page: usize,
+    label: String,
+    /// Size in PDF points.
+    size: Vec2,
+    shapes: Vec<(Color32, Geometry)>,
+}
+
 struct Plan {
-    file: PlanFile,
+    files: Vec<PlanFile>,
+    sheets: Vec<Sheet>,
+    summary: Vec<SummaryRow>,
     name: String,
+    /// Index into `sheets`.
     page: usize,
     /// Screen points per PDF point.
     zoom: f32,
@@ -70,15 +91,27 @@ struct Shown {
     area: Rect,
 }
 
+type Opened = (Vec<PlanFile>, Vec<Sheet>, Vec<SummaryRow>);
+
 impl TakeoffApp {
     fn open(&mut self, path: &Path) {
-        match PlanFile::open(path) {
-            Ok(file) if file.page_count() > 0 => {
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into());
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase());
+        let result = match ext.as_deref() {
+            Some("osp" | "ost") => open_ost(path),
+            _ => open_pdf(path),
+        };
+        match result {
+            Ok((files, sheets, summary)) if !sheets.is_empty() => {
                 self.plan = Some(Plan {
-                    file,
-                    name: path
-                        .file_name()
-                        .map_or_else(String::new, |n| n.to_string_lossy().into()),
+                    files,
+                    sheets,
+                    summary,
+                    name,
                     page: 0,
                     zoom: 1.0,
                     offset: Vec2::ZERO,
@@ -97,7 +130,7 @@ impl TakeoffApp {
 
     fn pick_and_open(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
-            .add_filter("PDF plans", &["pdf"])
+            .add_filter("Plans and OST jobs", &["pdf", "osp", "ost"])
             .pick_file()
         {
             self.open(&path);
@@ -105,14 +138,118 @@ impl TakeoffApp {
     }
 }
 
+fn open_pdf(path: &Path) -> Result<Opened, String> {
+    let file = PlanFile::open(path).map_err(|e| e.to_string())?;
+    let sheets = (0..file.page_count())
+        .map(|i| {
+            let (w, h) = file.page_size(i).unwrap_or((1.0, 1.0));
+            Sheet {
+                file: Some(0),
+                page: i,
+                label: format!("Page {}   {:.0} x {:.0} in", i + 1, w / 72.0, h / 72.0),
+                size: Vec2::new(w, h),
+                shapes: Vec::new(),
+            }
+        })
+        .collect();
+    Ok((vec![file], sheets, Vec::new()))
+}
+
+/// Opens an OST package: plan PDFs are written to a temp folder (Pdfium reads from files),
+/// pages follow OST's page order, and each page carries its takeoffs.
+fn open_ost(path: &Path) -> Result<Opened, String> {
+    let imp = rea_ost::import_path(path).map_err(|e| e.to_string())?;
+    let stem = path
+        .file_stem()
+        .map_or_else(|| "job".into(), |s| s.to_string_lossy().into_owned());
+    let dir = std::env::temp_dir().join("opentakeoff").join(stem);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut files = Vec::new();
+    let mut by_archive: HashMap<String, usize> = HashMap::new();
+    for (i, pf) in imp.plan_files.iter().enumerate() {
+        if !pf.archive_path.to_ascii_lowercase().ends_with(".pdf") {
+            continue; // shortcut: image plan pages (TIFF) show blank until we render images
+        }
+        let out = dir.join(format!("plan{i}.pdf"));
+        std::fs::write(&out, &pf.bytes).map_err(|e| e.to_string())?;
+        if let Ok(f) = PlanFile::open(&out) {
+            by_archive.insert(pf.archive_path.to_ascii_lowercase(), files.len());
+            files.push(f);
+        }
+    }
+
+    let b = &imp.bid;
+    let colors: HashMap<Id, Color32> = b
+        .conditions
+        .iter()
+        .map(|c| (c.id, Color32::from_rgb(c.color[0], c.color[1], c.color[2])))
+        .collect();
+    let mut pages: Vec<_> = b.pages.iter().collect();
+    pages.sort_by_key(|p| p.index);
+    let sheets = pages
+        .iter()
+        .map(|p| {
+            let file = by_archive
+                .get(&rea_ost::plan_archive_path(&p.file_path).to_ascii_lowercase())
+                .copied();
+            let page = p.file_page_index as usize;
+            let size = file
+                .and_then(|f| files[f].page_size(page))
+                .map_or(Vec2::new(p.width as f32, p.height as f32), |(w, h)| {
+                    Vec2::new(w, h)
+                });
+            let title = format!("{} {}", p.sheet_no, p.sheet_name);
+            let shapes = b
+                .takeoffs
+                .iter()
+                .filter(|t| t.page_id == p.id)
+                .map(|t| {
+                    let c = colors.get(&t.condition_id).copied().unwrap_or(Color32::RED);
+                    (c, t.geometry.clone())
+                })
+                .collect();
+            Sheet {
+                file,
+                page,
+                label: if title.trim().is_empty() {
+                    format!("Page {}", p.index + 1)
+                } else {
+                    title.trim().to_string()
+                },
+                size,
+                shapes,
+            }
+        })
+        .collect();
+
+    let parent: HashMap<Id, Id> = b
+        .takeoff_raw
+        .iter()
+        .filter_map(|(id, raw)| {
+            let p: Id = raw.extra.get("ParentUID")?.trim().parse().ok()?;
+            (p != 0).then_some((*id, p))
+        })
+        .collect();
+    let sagitta: HashMap<Id, f64> = b
+        .takeoff_raw
+        .iter()
+        .filter_map(|(id, raw)| raw.arc.as_ref().map(|a| (*id, a.sagitta)))
+        .collect();
+    let summary = quantities::summary(&b.pages, &b.conditions, &b.takeoffs, &parent, &sagitta);
+    Ok((files, sheets, summary))
+}
+
 impl Plan {
+    fn sheet(&self) -> &Sheet {
+        &self.sheets[self.page]
+    }
+
     fn page_size(&self) -> Vec2 {
-        let (w, h) = self.file.page_size(self.page).unwrap_or((1.0, 1.0));
-        Vec2::new(w, h)
+        self.sheet().size
     }
 
     fn go_to(&mut self, page: usize) {
-        if page < self.file.page_count() && page != self.page {
+        if page < self.sheets.len() && page != self.page {
             self.page = page;
             self.fit_pending = true;
         }
@@ -140,11 +277,15 @@ impl Plan {
     /// Renders whatever is missing: the base image after a page change, and the sharp image of
     /// the visible area once zoom and pan have settled.
     fn refresh(&mut self, ctx: &egui::Context, view: Rect, ppp: f32) -> Result<(), rea_pdf::Error> {
+        let Some(fi) = self.sheet().file else {
+            return Ok(()); // no plan file: the page shows blank with its takeoffs
+        };
+        let pi = self.sheet().page;
         let size = self.page_size();
         if self.base.as_ref().is_none_or(|b| b.page != self.page) {
             let started = Instant::now();
             let scale = BASE_PX / size.x.max(size.y);
-            let img = self.file.render_page(self.page, scale)?;
+            let img = self.files[fi].render_page(pi, scale)?;
             let tex = self.upload(ctx, "base", img);
             self.base = Some(Shown {
                 tex,
@@ -177,8 +318,8 @@ impl Plan {
         }
         let started = Instant::now();
         let px = Rect::from_min_max((visible.min * scale).floor(), (visible.max * scale).ceil());
-        let img = self.file.render_region(
-            self.page,
+        let img = self.files[fi].render_region(
+            pi,
             scale,
             px.min.x as i32,
             px.min.y as i32,
@@ -197,10 +338,11 @@ impl Plan {
     }
 
     fn paint(&self, painter: &egui::Painter, view: Rect) {
+        let origin = view.min + self.offset;
         let to_screen = |r: Rect| {
             Rect::from_min_max(
-                view.min + self.offset + r.min.to_vec2() * self.zoom,
-                view.min + self.offset + r.max.to_vec2() * self.zoom,
+                origin + r.min.to_vec2() * self.zoom,
+                origin + r.max.to_vec2() * self.zoom,
             )
         };
         let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -223,6 +365,28 @@ impl Plan {
         {
             painter.image(detail.tex.id(), to_screen(detail.area), uv, Color32::WHITE);
         }
+
+        // Takeoffs over the plan, in the condition's color.
+        let pos =
+            |p: &rea_core::model::Point| origin + Vec2::new(p.x as f32, p.y as f32) * self.zoom;
+        for (color, g) in &self.sheet().shapes {
+            let stroke = Stroke::new(2.0, *color);
+            match g {
+                Geometry::Polyline(v) => {
+                    painter.line(v.iter().map(pos).collect(), stroke);
+                }
+                Geometry::Polygon { outer, .. } => {
+                    let mut ring: Vec<Pos2> = outer.iter().map(pos).collect();
+                    if let Some(first) = ring.first().copied() {
+                        ring.push(first);
+                    }
+                    painter.line(ring, stroke);
+                }
+                Geometry::Point(p) => {
+                    painter.circle_filled(pos(p), 4.0, *color);
+                }
+            }
+        }
     }
 }
 
@@ -237,7 +401,7 @@ impl eframe::App for TakeoffApp {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     ui.add_enabled(false, egui::Button::new("New project (M2)"));
-                    if ui.button("Open plan PDF...  Ctrl+O").clicked() {
+                    if ui.button("Open plan PDF or OST job...  Ctrl+O").clicked() {
                         ui.close();
                         self.pick_and_open();
                     }
@@ -254,10 +418,11 @@ impl eframe::App for TakeoffApp {
                 match (&self.error, &self.plan) {
                     (Some(e), _) => ui.colored_label(Color32::RED, e),
                     (None, Some(p)) => ui.label(format!(
-                        "{}   Page {} of {}   Zoom {:.0}%   Render {} ms",
+                        "{}   Page {} of {}   {}   Zoom {:.0}%   Render {} ms",
                         p.name,
                         p.page + 1,
-                        p.file.page_count(),
+                        p.sheets.len(),
+                        p.sheet().label,
                         p.zoom * 100.0,
                         p.last_render_ms
                     )),
@@ -275,19 +440,65 @@ impl eframe::App for TakeoffApp {
                 ui.heading("Pages");
                 ui.separator();
                 let Some(plan) = &mut self.plan else {
-                    ui.label("Open a plan PDF to list its pages.");
+                    ui.label("Open a plan PDF or OST job to list its pages.");
                     return;
                 };
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    for i in 0..plan.file.page_count() {
-                        let (w, h) = plan.file.page_size(i).unwrap_or_default();
-                        let text = format!("Page {}   {:.0} x {:.0} in", i + 1, w / 72.0, h / 72.0);
+                    for i in 0..plan.sheets.len() {
+                        let s = &plan.sheets[i];
+                        let text = if s.shapes.is_empty() {
+                            s.label.clone()
+                        } else {
+                            format!("{}   ({})", s.label, s.shapes.len())
+                        };
                         if ui.selectable_label(i == plan.page, text).clicked() {
                             plan.go_to(i);
                         }
                     }
                 });
             });
+
+        if let Some(plan) = self.plan.as_ref().filter(|p| !p.summary.is_empty()) {
+            egui::Panel::right("summary")
+                .default_size(380.0)
+                .show(ui, |ui| {
+                    ui.heading("Summary");
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        egui::Grid::new("summary_grid")
+                            .striped(true)
+                            .num_columns(4)
+                            .show(ui, |ui| {
+                                ui.strong("No.");
+                                ui.strong("Condition");
+                                ui.strong("Qty 1");
+                                ui.strong("Qty 2");
+                                ui.end_row();
+                                for r in &plan.summary {
+                                    ui.horizontal(|ui| {
+                                        let (rect, _) = ui.allocate_exact_size(
+                                            Vec2::splat(10.0),
+                                            egui::Sense::hover(),
+                                        );
+                                        let [cr, cg, cb] = r.color;
+                                        ui.painter().rect_filled(
+                                            rect,
+                                            2.0,
+                                            Color32::from_rgb(cr, cg, cb),
+                                        );
+                                        ui.label(r.number.to_string());
+                                    });
+                                    ui.label(&r.name);
+                                    ui.label(format!("{:.2} {}", r.q1, r.u1));
+                                    ui.label(
+                                        r.q2.map_or(String::new(), |(q, u)| format!("{q:.2} {u}")),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                });
+        }
 
         let mut failed = None;
         egui::CentralPanel::default()
@@ -296,8 +507,8 @@ impl eframe::App for TakeoffApp {
                 let Some(plan) = &mut self.plan else {
                     ui.vertical_centered(|ui| {
                         ui.add_space(ui.available_height() * 0.35);
-                        ui.heading("Open a plan PDF to begin");
-                        if ui.button("Open plan PDF...").clicked() {
+                        ui.heading("Open a plan PDF or OST job to begin");
+                        if ui.button("Open...").clicked() {
                             failed = Some(None);
                         }
                     });
