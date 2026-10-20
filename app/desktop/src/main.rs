@@ -222,20 +222,7 @@ fn open_ost(path: &Path) -> Result<Opened, String> {
         })
         .collect();
 
-    let parent: HashMap<Id, Id> = b
-        .takeoff_raw
-        .iter()
-        .filter_map(|(id, raw)| {
-            let p: Id = raw.extra.get("ParentUID")?.trim().parse().ok()?;
-            (p != 0).then_some((*id, p))
-        })
-        .collect();
-    let sagitta: HashMap<Id, f64> = b
-        .takeoff_raw
-        .iter()
-        .filter_map(|(id, raw)| raw.arc.as_ref().map(|a| (*id, a.sagitta)))
-        .collect();
-    let summary = quantities::summary(&b.pages, &b.conditions, &b.takeoffs, &parent, &sagitta);
+    let summary = quantities::summary(&b.conditions, &rea_ost::totals_job(b));
     Ok((files, sheets, summary))
 }
 
@@ -460,19 +447,20 @@ impl eframe::App for TakeoffApp {
 
         if let Some(plan) = self.plan.as_ref().filter(|p| !p.summary.is_empty()) {
             egui::Panel::right("summary")
-                .default_size(380.0)
+                .default_size(480.0)
                 .show(ui, |ui| {
                     ui.heading("Summary");
                     ui.separator();
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         egui::Grid::new("summary_grid")
                             .striped(true)
-                            .num_columns(4)
+                            .num_columns(5)
                             .show(ui, |ui| {
                                 ui.strong("No.");
                                 ui.strong("Condition");
                                 ui.strong("Qty 1");
                                 ui.strong("Qty 2");
+                                ui.strong("Qty 3");
                                 ui.end_row();
                                 for r in &plan.summary {
                                     ui.horizontal(|ui| {
@@ -489,10 +477,11 @@ impl eframe::App for TakeoffApp {
                                         ui.label(r.number.to_string());
                                     });
                                     ui.label(&r.name);
-                                    ui.label(format!("{:.2} {}", r.q1, r.u1));
-                                    ui.label(
-                                        r.q2.map_or(String::new(), |(q, u)| format!("{q:.2} {u}")),
-                                    );
+                                    for q in r.qty {
+                                        ui.label(
+                                            q.map_or(String::new(), |(q, u)| format!("{q:.2} {u}")),
+                                        );
+                                    }
                                     ui.end_row();
                                 }
                             });

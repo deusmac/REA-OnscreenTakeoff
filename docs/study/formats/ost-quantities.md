@@ -3,7 +3,9 @@
 Our notes on how an OST job database stores takeoff geometry and how its stored totals
 follow from it. Source: a copy of the OST sample-projects database (28 bids, 223 pages,
 1004 conditions, 14963 takeoffs, 1253 total rows), read with `tools/ost-answer-key.ps1`
-(numbers and codes only) and checked by `app/crates/core/tests/ost_parity.rs`. JC allowed
+(numbers and codes only) and checked by `app/crates/core/tests/ost_parity.rs`. Every rule
+below lives in `app/crates/core/src/ost_totals.rs`; the harness only loads the CSVs into it
+and compares, and the app Summary uses the same module. JC allowed
 reading his own OST files for compatibility on 2026-10-20 (CLAUDE.md section 5). No raw
 job data is in the repo.
 

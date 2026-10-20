@@ -6,6 +6,7 @@ pub mod area;
 pub mod count;
 pub mod linear;
 pub mod model;
+pub mod ost_totals;
 pub mod scale;
 pub mod summary;
 pub mod units;

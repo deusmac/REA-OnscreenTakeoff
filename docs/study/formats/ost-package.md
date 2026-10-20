@@ -121,6 +121,26 @@ to the mapped struct (`project_extra`, `page_extra`, `condition_extra`, `takeoff
 - Not mapped: Count, Rotation, `No`, `BidZoneUID`, `BidTypAreaUID`, typical-group fields,
   fonts, grid offsets, flips, `Curve` flag, GUID, modified flag.
 
+### Totals input (`totals_job`)
+
+`rea_ost::totals_job(&bid)` turns a bid into the input of `rea_core::ost_totals` (the rules
+the parity harness checks against OST's stored totals). It reads the raw condition codes
+from `condition_extra` (Type, Shape, Quantity1-3, UOM1-3, RoundQuantity, RoundUp, Backout,
+DropRun, GridSize1-2, Gap) and the takeoff fields from `takeoff_raw` (the stored Position
+numbers in real inches, ParentUID, BidZoneUID, BidTypAreaUID, TypGroupUID, Count,
+GridOffsetX/Y, GridRotation).
+
+What the job XML lacks compared with the job database (all 37 readable packages in JC's
+corpus scanned 2026-10-20):
+- No stored totals at all (no `BidTakeoffTotals`); the app always recomputes.
+- `BidZones`, `BidTypAreas` and `BidTypAreaCounts` are present but empty in every package,
+  and no takeoff without a condition (zone outline) appears. The importer reads `BidZone`
+  (`UID`, `IsNegativeValues`), `BidTypAreaCount` (`BidAreaUID`, `BidTypAreaUID`, `Count`)
+  and a takeoff with condition 0 and a zone as a zone outline, using the database column
+  names; unconfirmed until a package with zones or typical areas turns up.
+- `DropValue` and the condition `Grid` flag are read by no rule (drops use the takeoff
+  `Count`; grid results use the grid sizes).
+
 ### BidAreas
 
 The section was empty in the sample (an element named `BidAreas` inside `BidAreas`), so the

@@ -127,6 +127,40 @@ fn bad_input_is_an_error() {
 }
 
 #[test]
+fn totals_input_and_zone_outline() {
+    let xml = JOB
+        .replace(
+            r#"<BidTakeoff UID="4" "#,
+            r#"<BidTakeoff UID="5" BidConditionUID="0" BidZoneUID="9" Position="200;300;300;300;300;400;200;400"/>
+<BidTakeoff UID="4" "#,
+        )
+        .replace(
+            "<BidPages>",
+            r#"<BidZones><BidZone UID="9" IsNegativeValues="1"/></BidZones><BidPages>"#,
+        )
+        .replace(r#"Quantity1="23""#, r#"Quantity1="23" UOM1="0""#);
+    let b = import_bytes(xml.as_bytes()).unwrap().bid;
+    assert_eq!(b.takeoffs.len(), 4);
+    let job = totals_job(&b);
+    let wall = &job.conditions[0];
+    assert_eq!((wall.kind, wall.results, wall.uoms[0]), (0, [1, 3, 0], 2));
+    assert_eq!(
+        job.takeoffs[0].position,
+        vec![100.0, 200.0, 100.0, 800.0, 0.0, 0.0, 0.0]
+    );
+    assert!(job.takeoffs[2].negative);
+    assert_eq!(job.zone_outlines[0].ring.len(), 4);
+    assert!(job.negative_zones.contains(&9));
+    // The door at 250;350 sits in negative zone 9; its no-zone sibling stores 0.
+    let rows = rea_core::ost_totals::bid_totals(&job);
+    let door: Vec<_> = rows.iter().filter(|r| r.key.condition == 102).collect();
+    assert_eq!(door.len(), 2);
+    assert_eq!(door[0].quantities[0], Some(0.0));
+    assert_eq!(door[1].key.zone, Some(9));
+    assert_eq!(door[1].quantities[0], Some(-1.0));
+}
+
+#[test]
 fn archive_path_for_plans() {
     assert_eq!(
         plan_archive_path("E:\\Desktop\\Jobs\\set (2).pdf"),

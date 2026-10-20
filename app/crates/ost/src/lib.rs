@@ -6,7 +6,7 @@
 
 mod xml;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Cursor, Read};
 use std::str::FromStr;
 
@@ -14,6 +14,7 @@ use rea_core::model::{
     BidArea, Condition, ConditionStyle, Geometry, Id, Measure, Page, Point, Project, ResultKind,
     Scale, ScaleStyle, Takeoff,
 };
+use rea_core::ost_totals::{OstCondition, OstJob, OstTakeoff, TypAreaCount, ZoneOutline};
 use thiserror::Error;
 use xml::Node;
 
@@ -86,6 +87,8 @@ pub struct Arc {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TakeoffRaw {
     pub arc: Option<Arc>,
+    /// `Position` numbers as stored (real inches), for `rea_core::ost_totals`.
+    pub position: Vec<f64>,
     pub extra: Extra,
 }
 
@@ -101,6 +104,12 @@ pub struct OstBid {
     pub takeoffs: Vec<Takeoff>,
     pub takeoff_raw: HashMap<Id, TakeoffRaw>,
     pub bid_areas: Vec<BidArea>,
+    /// Zone regions: takeoffs with a zone and no condition. Not seen in any package yet.
+    pub zone_outlines: Vec<ZoneOutline>,
+    /// `BidZone` elements marked `IsNegativeValues`.
+    pub negative_zones: HashSet<Id>,
+    /// `BidTypAreaCount` elements.
+    pub typ_area_counts: Vec<TypAreaCount>,
 }
 
 #[derive(Debug, Clone)]
@@ -412,12 +421,41 @@ fn map_bid(n: &Node, cdn_types: &HashMap<String, String>) -> Result<OstBid, OstE
             )
         })
         .collect();
+    let mut zone_outlines = Vec::new();
     for (page_id, tn) in takeoff_nodes {
+        // A zone region is a takeoff with a zone and no condition (seen in the job database,
+        // not yet in a package).
+        let no_cond = matches!(attr(tn, "BidConditionUID").trim(), "" | "0");
+        let zone = attr(tn, "BidZoneUID").trim().parse::<Id>().unwrap_or(0);
+        if no_cond && zone != 0 {
+            let u = attr(tn, "UID");
+            let v = parse_position(&attr(tn, "Position"), &u)?;
+            zone_outlines.push(ZoneOutline {
+                zone,
+                page: page_id,
+                ring: v.chunks_exact(2).map(|c| (c[0], c[1])).collect(),
+            });
+            continue;
+        }
         let k = page_k.get(&page_id).copied().unwrap_or(1.0);
         let (t, raw) = map_takeoff(tn, page_id, k, &cond_style, &bid_areas)?;
         takeoff_raw.insert(t.id, raw);
         takeoffs.push(t);
     }
+    // Element and attribute names follow the job database columns; both sections were empty
+    // in every package read so far.
+    let num_attr = |x: &Node, k: &str| attr(x, k).trim().parse::<f64>().unwrap_or(0.0);
+    let negative_zones = descendants_named(n, "BidZone")
+        .filter(|z| attr(z, "IsNegativeValues").trim() == "1")
+        .filter_map(|z| attr(z, "UID").trim().parse().ok())
+        .collect();
+    let typ_area_counts = descendants_named(n, "BidTypAreaCount")
+        .map(|x| TypAreaCount {
+            area: num_attr(x, "BidAreaUID") as Id,
+            typ_area: num_attr(x, "BidTypAreaUID") as Id,
+            count: num_attr(x, "Count"),
+        })
+        .collect();
 
     Ok(OstBid {
         project,
@@ -429,7 +467,80 @@ fn map_bid(n: &Node, cdn_types: &HashMap<String, String>) -> Result<OstBid, OstE
         takeoffs,
         takeoff_raw,
         bid_areas,
+        zone_outlines,
+        negative_zones,
+        typ_area_counts,
     })
+}
+
+/// The bid as input for `rea_core::ost_totals`: OST's raw numbers and codes, positions in
+/// real inches as stored.
+pub fn totals_job(bid: &OstBid) -> OstJob {
+    let no_extra = Extra::new();
+    let conditions = bid
+        .conditions
+        .iter()
+        .map(|c| {
+            let m = bid.condition_extra.get(&c.id).unwrap_or(&no_extra);
+            let s = |k: &str| m.get(k).map_or("", |v| v.trim());
+            let f = |k: &str| s(k).parse::<f64>().unwrap_or(0.0);
+            let (rise, run) = c.slope.unwrap_or((0.0, 0.0));
+            OstCondition {
+                uid: c.id,
+                kind: s("Type").parse().unwrap_or(-1),
+                shape: s("Shape").parse().unwrap_or(0),
+                width: c.width,
+                height: c.height,
+                thickness: c.thickness,
+                depth: c.depth,
+                rise,
+                run,
+                results: std::array::from_fn(|i| {
+                    s(&format!("Quantity{}", i + 1)).parse().unwrap_or(u32::MAX)
+                }),
+                uoms: std::array::from_fn(|i| s(&format!("UOM{}", i + 1)).parse().unwrap_or(-1)),
+                round_quantity: s("RoundQuantity") == "1",
+                round_up: f("RoundUp"),
+                backout: s("Backout") == "1",
+                drop_run: s("DropRun") == "1",
+                grid_size: (f("GridSize1"), f("GridSize2")),
+                gap: f("Gap"),
+            }
+        })
+        .collect();
+    let no_raw = TakeoffRaw::default();
+    let takeoffs = bid
+        .takeoffs
+        .iter()
+        .map(|t| {
+            let raw = bid.takeoff_raw.get(&t.id).unwrap_or(&no_raw);
+            let s = |k: &str| raw.extra.get(k).map_or("", |v| v.trim());
+            let f = |k: &str| s(k).parse::<f64>().unwrap_or(0.0);
+            let id = |k: &str| s(k).parse::<Id>().ok().filter(|v| *v != 0);
+            OstTakeoff {
+                uid: t.id,
+                page: t.page_id,
+                condition: t.condition_id,
+                zone: id("BidZoneUID"),
+                area: t.bid_area_id,
+                typ_area: id("BidTypAreaUID"),
+                parent: id("ParentUID"),
+                typ_group: id("TypGroupUID"),
+                position: raw.position.clone(),
+                count: f("Count"),
+                negative: t.negative,
+                grid_offset: (f("GridOffsetX"), f("GridOffsetY")),
+                grid_rotation: f("GridRotation"),
+            }
+        })
+        .collect();
+    OstJob {
+        conditions,
+        takeoffs,
+        zone_outlines: bid.zone_outlines.clone(),
+        negative_zones: bid.negative_zones.clone(),
+        typ_area_counts: bid.typ_area_counts.clone(),
+    }
 }
 
 fn descendants_named<'a>(n: &'a Node, name: &'a str) -> Box<dyn Iterator<Item = &'a Node> + 'a> {
@@ -665,7 +776,11 @@ fn map_takeoff(
                         negative,
                         geometry: Geometry::Polyline(points(pts, k)),
                     },
-                    TakeoffRaw { arc, extra: m },
+                    TakeoffRaw {
+                        arc,
+                        position: nums.clone(),
+                        extra: m,
+                    },
                 ));
             }
             let (pts, trailer) = if nums.len() % 2 == 1 {
@@ -718,7 +833,14 @@ fn map_takeoff(
         negative,
         geometry,
     };
-    Ok((t, TakeoffRaw { arc, extra: m }))
+    Ok((
+        t,
+        TakeoffRaw {
+            arc,
+            position: nums,
+            extra: m,
+        },
+    ))
 }
 
 #[cfg(test)]

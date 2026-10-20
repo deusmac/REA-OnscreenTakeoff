@@ -1,57 +1,19 @@
-//! Answer-key parity: recompute every OST BidTakeoffTotals row with rea_core and compare.
+//! Answer-key parity: recompute every OST BidTakeoffTotals row with `rea_core::ost_totals`
+//! and compare.
 //!
 //! Input is the CSV folder written by `tools/ost-answer-key.ps1` (never committed; it is
 //! client data). Set `OST_ANSWER_KEY` to that folder; without it the test prints a note and
 //! passes. Formats and the code table: docs/study/formats/ost-quantities.md.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use rea_core::area::{
-    area_results, grid_length, grid_tile_count, rounded_perimeter, rounded_ring, slope_factor,
-    tile_count_average, AreaShape, Grid,
+use rea_core::model::Id;
+use rea_core::ost_totals::{
+    bid_totals, OstCondition, OstJob, OstTakeoff, TotalKey, TypAreaCount, ZoneOutline,
 };
-use rea_core::count::{count_results, CountDims, CountShape};
-use rea_core::linear::{
-    linear_results, ost_segment, points_inside, LinearInput, Opening, Point, Slope,
-};
-use rea_core::scale::{Scale, ScaleStyle};
 
 type Row = HashMap<String, String>;
-/// Zone outlines per page: (zone UID, ring).
-type ZoneRings = HashMap<String, Vec<(String, Vec<Point>)>>;
-
-/// Typical-group takeoffs (TypGroupUID set) are left out of the page totals; OST keeps them
-/// in its typical-group totals (docs/study/formats/ost-quantities.md).
-fn in_page_totals(t: &Row) -> bool {
-    s(t, "TypGroupUID").is_empty()
-}
-
-/// The points that place a takeoff of this condition type on the page.
-fn placed_points(ty: &str, t: &Row) -> Vec<Point> {
-    let v = nums(t);
-    match ty {
-        "0" => ost_segment(&v).map_or(vec![], |(a, b, _)| vec![a, b]),
-        "3" => pairs(v.get(2..4).unwrap_or(&[])),
-        _ => pairs(&v),
-    }
-}
-
-/// The takeoff's zone: its own BidZoneUID, else the zone whose outline on the page holds
-/// all its points, else none. Zone rule: docs/study/formats/ost-quantities.md.
-fn effective_zone(rings: &ZoneRings, ty: &str, t: &Row) -> String {
-    let own = s(t, "BidZoneUID");
-    if !own.is_empty() {
-        return own.to_string();
-    }
-    let pts = placed_points(ty, t);
-    rings
-        .get(s(t, "BidPageUID"))
-        .into_iter()
-        .flatten()
-        .find(|(_, ring)| points_inside(&pts, ring))
-        .map_or(String::new(), |(z, _)| z.clone())
-}
 
 fn load(dir: &Path, name: &str) -> Vec<Row> {
     let text = std::fs::read_to_string(dir.join(name))
@@ -83,205 +45,69 @@ fn s<'a>(r: &'a Row, k: &str) -> &'a str {
     r.get(k).map(String::as_str).unwrap_or("")
 }
 
+/// A UID column: empty or 0 is none.
+fn id(r: &Row, k: &str) -> Option<Id> {
+    s(r, k).parse().ok().filter(|v| *v != 0)
+}
+
+fn uid(r: &Row) -> Id {
+    id(r, "UID").unwrap_or(0)
+}
+
+fn flag(r: &Row, k: &str) -> bool {
+    s(r, k) == "1"
+}
+
 /// Position text "x;y;x;y;..." (real inches) as numbers.
-fn nums(t: &Row) -> Vec<f64> {
-    s(t, "Points")
+fn nums(r: &Row) -> Vec<f64> {
+    s(r, "Points")
         .split(';')
         .filter_map(|v| v.parse().ok())
         .collect()
 }
 
-fn pairs(v: &[f64]) -> Vec<(f64, f64)> {
-    v.chunks_exact(2).map(|c| (c[0], c[1])).collect()
-}
-
-fn sign(t: &Row) -> f64 {
-    if s(t, "IsNegativeQuantity") == "1" {
-        -1.0
-    } else {
-        1.0
+fn condition(r: &Row) -> OstCondition {
+    OstCondition {
+        uid: uid(r),
+        kind: s(r, "Type").parse().unwrap_or(-1),
+        shape: s(r, "Shape").parse().unwrap_or(0),
+        width: num(r, "Width"),
+        height: num(r, "Height"),
+        thickness: num(r, "Thickness"),
+        depth: num(r, "Depth"),
+        rise: num(r, "Rise"),
+        run: num(r, "Run"),
+        results: std::array::from_fn(|i| {
+            s(r, &format!("Quantity{}", i + 1))
+                .parse()
+                .unwrap_or(u32::MAX)
+        }),
+        uoms: std::array::from_fn(|i| s(r, &format!("UOM{}", i + 1)).parse().unwrap_or(-1)),
+        round_quantity: flag(r, "RoundQuantity"),
+        round_up: num(r, "RoundUp"),
+        backout: flag(r, "Backout"),
+        drop_run: flag(r, "DropRun"),
+        grid_size: (num(r, "GridSize1"), num(r, "GridSize2")),
+        gap: num(r, "Gap"),
     }
 }
 
-struct Data {
-    conds: HashMap<String, Row>,
-    tks: Vec<Row>,
-    kids: HashMap<String, Vec<usize>>,
-}
-
-impl Data {
-    fn kids_of<'a>(&'a self, t: &Row) -> impl Iterator<Item = &'a Row> + 'a {
-        self.kids
-            .get(s(t, "UID"))
-            .into_iter()
-            .flatten()
-            .map(|&i| &self.tks[i])
+fn takeoff(r: &Row) -> OstTakeoff {
+    OstTakeoff {
+        uid: uid(r),
+        page: id(r, "BidPageUID").unwrap_or(0),
+        condition: id(r, "BidConditionUID").unwrap_or(0),
+        zone: id(r, "BidZoneUID"),
+        area: id(r, "BidAreaUID"),
+        typ_area: id(r, "BidTypAreaUID"),
+        parent: id(r, "ParentUID"),
+        typ_group: id(r, "TypGroupUID"),
+        position: nums(r),
+        count: num(r, "Count"),
+        negative: flag(r, "IsNegativeQuantity"),
+        grid_offset: (num(r, "GridOffsetX"), num(r, "GridOffsetY")),
+        grid_rotation: num(r, "GridRotation"),
     }
-    fn cond_of(&self, t: &Row) -> &Row {
-        &self.conds[s(t, "BidConditionUID")]
-    }
-}
-
-/// Every result OST can store for this condition, keyed by OST quantity code, in OST base
-/// units (inches, square inches, cubic inches, each). `None` means not modeled.
-fn results(d: &Data, c: &Row, ts: &[&Row]) -> HashMap<u32, Option<f64>> {
-    let mut out: HashMap<u32, Option<f64>> = HashMap::new();
-    let mut add = |code: u32, v: Option<f64>| {
-        let e = out.entry(code).or_insert(Some(0.0));
-        *e = match (*e, v) {
-            (Some(a), Some(b)) => Some(a + b),
-            _ => None,
-        };
-    };
-    // Positions are already real inches, so the drawing scale is 1 inch per unit.
-    let unit = Scale::from_known_length((0.0, 0.0), (1.0, 0.0), 1.0, ScaleStyle::Custom).unwrap();
-    let (rise, run) = (num(c, "Rise"), num(c, "Run"));
-    match s(c, "Type") {
-        "0" => {
-            for t in ts.iter().filter(|t| s(t, "ParentUID").is_empty()) {
-                let v = nums(t);
-                let openings: Vec<Opening> = d
-                    .kids_of(t)
-                    .filter(|k| {
-                        let kc = d.cond_of(k);
-                        matches!(s(kc, "Type"), "2" | "3") && s(kc, "Backout") == "1"
-                    })
-                    .map(|k| {
-                        let kc = d.cond_of(k);
-                        Opening {
-                            width: num(kc, "Width"),
-                            height: num(kc, "Height"),
-                        }
-                    })
-                    .collect();
-                let Some((a, b, sag)) = ost_segment(&v) else {
-                    continue;
-                };
-                let r = linear_results(&LinearInput {
-                    points: &[a, b],
-                    sagittas: &[sag],
-                    scale: &unit,
-                    height: num(c, "Height"),
-                    thickness: num(c, "Thickness"),
-                    slope: (run != 0.0).then_some(Slope { rise, run }),
-                    drops: if s(c, "DropRun") == "1" {
-                        num(t, "Count")
-                    } else {
-                        0.0
-                    },
-                    openings: &openings,
-                })
-                .expect("valid slope");
-                let k = sign(t);
-                for (code, v) in [
-                    (1, r.length),
-                    (2, r.segment_count as f64),
-                    (3, r.area_one_side),
-                    (4, r.area_both_sides),
-                    (5, r.area_top_or_bottom),
-                    (6, r.area_top_and_bottom),
-                    (7, r.area_one_end),
-                    (8, r.area_both_ends),
-                    (9, r.area_all_sides),
-                    (20, r.volume),
-                ] {
-                    add(code, Some(k * v));
-                }
-            }
-        }
-        "1" => {
-            let f = slope_factor(rise, run);
-            // Round Quantity: edges rounded up to RoundUp inches (area and perimeter only).
-            let step = if s(c, "RoundQuantity") == "1" {
-                num(c, "RoundUp")
-            } else {
-                0.0
-            };
-            for t in ts.iter().filter(|t| s(t, "ParentUID").is_empty()) {
-                let outer = pairs(&nums(t));
-                // A backout counts with its parent, whatever condition it sits in.
-                let rings: Vec<Vec<(f64, f64)>> = d
-                    .kids_of(t)
-                    .filter(|k| s(d.cond_of(k), "Type") == "1")
-                    .map(|k| pairs(&nums(k)))
-                    .collect();
-                let refs: Vec<&[(f64, f64)]> = rings.iter().map(Vec::as_slice).collect();
-                let shape = AreaShape {
-                    outer: &outer,
-                    backouts: &refs,
-                };
-                let rounded = (step > 0.0).then(|| rounded_ring(&outer, step));
-                let mut r = area_results(
-                    &AreaShape {
-                        outer: rounded.as_deref().unwrap_or(&outer),
-                        backouts: &refs,
-                    },
-                    1.0,
-                    num(c, "Thickness"),
-                    f,
-                );
-                if step > 0.0 {
-                    let bl = r.perimeter - r.perimeter_without_backouts;
-                    r.perimeter_without_backouts = rounded_perimeter(&outer, step);
-                    r.perimeter = r.perimeter_without_backouts + bl;
-                }
-                let tiles = tile_count_average(r.area, num(c, "GridSize1"), num(c, "GridSize2"));
-                let grid = Grid {
-                    size_x: num(c, "GridSize1"),
-                    size_y: num(c, "GridSize2"),
-                    gap: num(c, "Gap"),
-                    offset: (num(t, "GridOffsetX"), num(t, "GridOffsetY")),
-                    rotation: num(t, "GridRotation"),
-                };
-                let k = sign(t);
-                for (code, v) in [
-                    (11, Some(r.area)),
-                    (12, Some(r.area)), // minus attachments; attachments not modeled
-                    (14, Some(r.perimeter_without_backouts)),
-                    (15, Some(r.perimeter)),
-                    (16, Some(grid_length(&shape, &grid))),
-                    (17, Some(tiles)),
-                    (18, Some(grid_tile_count(&shape, &grid) as f64)),
-                    (19, Some(1.0)),
-                    (21, Some(r.volume)),
-                    (33, Some(r.perimeter)), // plus attachments; attachments not modeled
-                    (34, Some(r.area_ignore_backouts)),
-                ] {
-                    add(code, v.map(|v| k * v));
-                }
-            }
-        }
-        // Type 4: one point per takeoff and OST's total is the takeoff count (checked on
-        // JC's databases, 2026-10-20), so it scores like a count.
-        "2" | "3" | "4" => {
-            let n: f64 = ts.iter().map(|t| sign(t)).sum();
-            let shape = match s(c, "Shape") {
-                "1" => CountShape::Circle,
-                "3" => CountShape::Rectangle,
-                "12" => CountShape::Shape12,
-                _ => CountShape::Square,
-            };
-            let r = count_results(
-                n,
-                CountDims::new(shape, num(c, "Height"), num(c, "Width"), num(c, "Depth")),
-            );
-            for (code, v) in [
-                (23, r.count),
-                (24, r.total_height),
-                (5, r.top_or_bottom),
-                (13, r.perimeter),
-                (25, r.width_side),
-                (26, r.both_width_sides),
-                (20, r.volume),
-                (31, r.opening_perimeter_four_sides),
-                (32, r.opening_perimeter_three_sides),
-            ] {
-                add(code, Some(v));
-            }
-        }
-        _ => {}
-    }
-    out
 }
 
 fn type_name(t: &str) -> &'static str {
@@ -302,79 +128,53 @@ fn ost_answer_key_parity() {
         return;
     };
     let dir = Path::new(&dir);
-    let conds: HashMap<String, Row> = load(dir, "conditions.csv")
-        .into_iter()
-        .map(|r| (s(&r, "UID").to_string(), r))
-        .collect();
+    let cond_rows = load(dir, "conditions.csv");
+    let conds: HashMap<String, &Row> = cond_rows.iter().map(|r| (s(r, "UID").into(), r)).collect();
     let tks = load(dir, "takeoffs.csv");
     let totals = load(dir, "totals.csv");
-    let typ: HashMap<(String, String), f64> = load(dir, "typareacounts.csv")
+    let typ_area_counts: Vec<TypAreaCount> = load(dir, "typareacounts.csv")
         .iter()
-        .map(|r| {
-            let k = (
-                s(r, "BidAreaUID").to_string(),
-                s(r, "BidTypAreaUID").to_string(),
-            );
-            (k, num(r, "Count"))
+        .map(|r| TypAreaCount {
+            area: id(r, "BidAreaUID").unwrap_or(0),
+            typ_area: id(r, "BidTypAreaUID").unwrap_or(0),
+            count: num(r, "Count"),
         })
         .collect();
+    let negative_zones: HashSet<Id> = load(dir, "zones.csv")
+        .iter()
+        .filter(|r| flag(r, "IsNegativeValues"))
+        .map(uid)
+        .collect();
 
-    let key = |r: &Row, area: &str| {
-        let f = |k: &str| s(r, k).to_string();
-        let a = area.to_string();
-        (
-            f("BidUID"),
-            f("BidPageUID"),
-            f("BidZoneUID"),
-            a,
-            f("BidTypAreaUID"),
-            f("BidConditionUID"),
-        )
-    };
-    let zone_neg: HashMap<String, bool> = load(dir, "zones.csv")
-        .iter()
-        .map(|r| (s(r, "UID").to_string(), s(r, "IsNegativeValues") == "1"))
-        .collect();
-    // Zone rows by (page, area, typical, condition): see the zone rule in
-    // docs/study/formats/ost-quantities.md.
-    let zone_sibling: std::collections::HashSet<_> = totals
-        .iter()
-        .filter(|r| !s(r, "BidZoneUID").is_empty())
-        .map(|r| key(r, s(r, "BidAreaUID")))
-        .map(|k| (k.1, k.3, k.4, k.5))
-        .collect();
-    let uid_bid: HashMap<&str, &str> = tks.iter().map(|t| (s(t, "UID"), s(t, "BidUID"))).collect();
-    let mut groups: HashMap<_, Vec<usize>> = HashMap::new();
-    let mut kids: HashMap<String, Vec<usize>> = HashMap::new();
-    // Zone outlines: a takeoff with a zone and no condition; its points are the ring.
-    let mut rings: ZoneRings = HashMap::new();
-    for t in tks
-        .iter()
-        .filter(|t| !conds.contains_key(s(t, "BidConditionUID")))
-    {
-        if !s(t, "BidZoneUID").is_empty() {
-            rings
-                .entry(s(t, "BidPageUID").to_string())
-                .or_default()
-                .push((s(t, "BidZoneUID").to_string(), pairs(&nums(t))));
+    // One job per bid. A takeoff with a zone and no condition is the zone's outline.
+    let mut jobs: HashMap<&str, OstJob> = HashMap::new();
+    for r in &cond_rows {
+        jobs.entry(s(r, "BidUID"))
+            .or_default()
+            .conditions
+            .push(condition(r));
+    }
+    for r in &tks {
+        let job = jobs.entry(s(r, "BidUID")).or_default();
+        if conds.contains_key(s(r, "BidConditionUID")) {
+            job.takeoffs.push(takeoff(r));
+        } else if let Some(zone) = id(r, "BidZoneUID") {
+            let v = nums(r);
+            job.zone_outlines.push(ZoneOutline {
+                zone,
+                page: id(r, "BidPageUID").unwrap_or(0),
+                ring: v.chunks_exact(2).map(|c| (c[0], c[1])).collect(),
+            });
         }
     }
-    for (i, t) in tks.iter().enumerate() {
-        let mut k = key(t, s(t, "BidAreaUID"));
-        // A zone is a region on the page; most takeoffs carry no zone id of their own.
-        if let Some(c) = conds.get(s(t, "BidConditionUID")) {
-            k.2 = effective_zone(&rings, s(c, "Type"), t);
-        }
-        if in_page_totals(t) {
-            groups.entry(k).or_default().push(i);
-        }
-        let p = s(t, "ParentUID");
-        // A parent UID from another bid is a stale copy link; OST ignores that child.
-        if !p.is_empty() && uid_bid.get(p) == Some(&s(t, "BidUID")) {
-            kids.entry(p.to_string()).or_default().push(i);
+    let mut ours: HashMap<(&str, TotalKey), [Option<f64>; 3]> = HashMap::new();
+    for (bid, job) in &mut jobs {
+        job.negative_zones = negative_zones.clone();
+        job.typ_area_counts = typ_area_counts.clone();
+        for row in bid_totals(job) {
+            ours.insert((*bid, row.key), row.quantities);
         }
     }
-    let data = Data { conds, tks, kids };
 
     // Per condition type: (slots compared, slots matched, rows, rows all matched).
     let mut stats: HashMap<&str, [usize; 4]> = HashMap::new();
@@ -384,38 +184,20 @@ fn ost_answer_key_parity() {
     // Rows OST left stale: reported on their own, never counted as our mismatch.
     let (mut stale, mut stale_notes) = (0, Vec::<String>::new());
     for tot in &totals {
-        let c = &data.conds[s(tot, "BidConditionUID")];
+        let c = conds[s(tot, "BidConditionUID")];
         let ty = type_name(s(c, "Type"));
-        // A typical-area row is the area-free typical row times the area's repeat count.
-        let (area, mult) = match (s(tot, "BidAreaUID"), s(tot, "BidTypAreaUID")) {
-            (a, t) if !a.is_empty() && !t.is_empty() => (
-                "",
-                typ.get(&(a.to_string(), t.to_string()))
-                    .copied()
-                    .unwrap_or(0.0),
-            ),
-            (a, _) => (a, 1.0),
+        let key = TotalKey {
+            page: id(tot, "BidPageUID").unwrap_or(0),
+            zone: id(tot, "BidZoneUID"),
+            area: id(tot, "BidAreaUID"),
+            typ_area: id(tot, "BidTypAreaUID"),
+            condition: uid(c),
         };
-        let zone = s(tot, "BidZoneUID");
-        let gk = key(tot, area);
-        // Takeoffs were grouped by the zone whose outline holds them, so a zone row reads its
-        // own takeoffs (signed below) and the no-zone row reads what is left outside.
-        let ts: Vec<&Row> = groups
-            .get(&gk)
-            .into_iter()
-            .flatten()
-            .map(|&i| &data.tks[i])
-            .collect();
-        // Nothing left outside the zone: the no-zone row of a zone row must store zero.
-        let has_zone_sibling = zone.is_empty()
-            && ts.is_empty()
-            && zone_sibling.contains(&(gk.1.clone(), gk.3.clone(), gk.4.clone(), gk.5.clone()));
-        let zsign = if zone_neg.get(zone) == Some(&true) {
-            -1.0
-        } else {
-            1.0
-        };
-        let vals = results(&data, c, &ts);
+        // No row of ours: no takeoffs feed it, so every result is 0.
+        let vals = ours
+            .get(&(s(tot, "BidUID"), key))
+            .copied()
+            .unwrap_or([Some(0.0); 3]);
         let mut row_ok = true;
         let (mut compared, mut matched, mut stray) = (0, 0, false);
         let mut row_misses: Vec<(f64, String)> = Vec::new();
@@ -433,21 +215,12 @@ fn ost_answer_key_parity() {
                 sum_differs += 1;
             }
             compared += 1;
-            if has_zone_sibling {
-                // The zone row took everything; this row keeps the remainder, which is zero.
-                matched += usize::from(q.abs() <= 0.01);
-                row_ok &= q.abs() <= 0.01;
+            let Some(p) = vals[i - 1] else {
+                *unmodeled
+                    .entry((ty.to_string(), code.to_string()))
+                    .or_default() += 1;
+                row_ok = false;
                 continue;
-            }
-            let p = match vals.get(&code.parse().unwrap_or(u32::MAX)) {
-                Some(Some(v)) => v * mult * zsign,
-                _ => {
-                    *unmodeled
-                        .entry((ty.to_string(), code.to_string()))
-                        .or_default() += 1;
-                    row_ok = false;
-                    continue;
-                }
             };
             let err = (p - q).abs();
             if err <= 0.01 || err <= 0.01 * q.abs() {
