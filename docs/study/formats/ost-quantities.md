@@ -84,8 +84,11 @@ Area (type 1):
   "minus attachments" (3).
 - 14 Perimeter without backouts: P (2).
 - 15 Perimeter: P + BL (115).
-- 16 Grid length: not reproduced, see open items (9).
-- 17 Tile count, average: area / (GridSize1 * GridSize2), fractional (2).
+- 16 Grid length: length of the tile grid lines inside the area, see "Gridded areas and
+  Round Quantity" below.
+- 17 Tile count, average: area / (GridSize1 * GridSize2), fractional (2). With Round
+  Quantity on, the area here is the rounded area.
+- 18 Tile count: whole tiles touched by the area, see below.
 - 19 Area count: number of area objects (6).
 - 21 Volume: (A - BA) * slope * T (50).
 - 33 Perimeter, same as 15 in its only row (1).
@@ -126,6 +129,53 @@ them in every row.
 - Typical areas: a row with both a bid area and a typical area equals the typical area's
   own row (bid area empty) times `BidTypAreaCounts.Count` for that bid area and typical
   area.
+
+## Gridded areas and Round Quantity
+
+Found on JC's 16 job databases (2026-10-20). Conditions: `Grid`, `GridSize1`, `GridSize2`,
+`Gap`, `RoundQuantity`, `RoundUp`. Takeoffs: `GridOffsetX`, `GridOffsetY`, `GridRotation`.
+
+Grid placement:
+- Origin: the area centroid of the takeoff's outer ring (not the first click, not the
+  bounding box corner or centre) plus (`GridOffsetX`, `GridOffsetY`) in page inches.
+- Axes: turned by `GridRotation` (radians) about that origin. `GridSize1` is the tile size
+  along the turned x axis, `GridSize2` along the turned y axis.
+- Line pitch: tile size plus `Gap` (16 in tiles with Gap 1 give lines 17 in apart).
+- Lines sit at every whole multiple of the pitch from the origin, so offsets larger than a
+  tile simply wrap.
+
+Codes:
+- 16 Grid length: total length of grid lines inside the area (outer ring minus
+  backouts), both directions. 218 of 221 stored rows match, Gap row included.
+- 18 Tile count: number of grid cells that hold any part of the area; a cut tile counts
+  whole, a cell entirely inside a backout does not count. 65 of 73 rows match.
+- 17 Tile count, average: area / tile area as before (no grid placement involved).
+- Grid length and tile count use the drawn shape, not the Round Quantity shape.
+
+Round Quantity (`RoundQuantity` on, `RoundUp` = step in inches, seen only on area
+conditions with grid on, plus 4 linear conditions not checked):
+- Perimeter: every edge of the closed outline, closing edge included, rounded up to the
+  next multiple of the step, then summed. Backout perimeters are added unrounded.
+- Area: start at the first vertex and walk the drawn edges in order, keeping each edge's
+  direction but rounding its length up to the step. The closing edge is not walked; the
+  outline closes straight from the last walked point to the start, even when the walk does
+  not come back to it. Backout areas are subtracted unrounded. A 169.142 x 102.664 in room
+  with a 24 in step stores 192 x 120 = 23040 sq in; an L-shape with edges 64, 93, 149,
+  193, 213, 100 stores 43488.
+- Tile count average then divides the rounded area by the tile area.
+
+Residuals (not explained yet):
+- Round Quantity area on 6 totals (about 18 quantities): shapes whose closing edge is
+  diagonal (for example a last edge of 8.06 in at a slant), or whose short jogs round up
+  so the walk overshoots. OST's value differs from the walk by 1 to 6%. Snapping vertices
+  to a step grid, walking from other start vertices or in reverse, and walking the closing
+  edge were all tried and none fits every row.
+- Tile count with a backout (3 copies of one total): ours 1091, OST 1107; with the
+  backout ignored we get 1251. Placing the grid from the net centroid made it worse.
+- Tile count on a total mixing turned and plain grids: ours 528, OST 530.
+- Grid length on one total with a backout: 0.09% off.
+- Rows where OST stores 0 but the takeoffs give a value (stale totals, 2 grid length and
+  4 tile count rows) are not grid issues.
 
 ## Match rate (sample database, 2026-10-20)
 
@@ -200,6 +250,7 @@ Residuals (55 quantities, none explained by geometry):
 
 ## Open items
 
+<<<<<<< HEAD
 - Grid length (area code 16). Clipping grid lines at GridSize1 and GridSize2 spacing to the
   area gets within about 1 to 7% but never exact. Candidates tried for the grid origin:
   world zero, the area's bounding-box corner, its first vertex, each plus
@@ -208,6 +259,12 @@ Residuals (55 quantities, none explained by geometry):
   (one row) shortens lines at each crossing.
 - Codes with no data in the sample: linear 6, 7; area 18 (likely visible tile count);
   count 26. Attachments (area AA, AL, AV) have no rows either.
+=======
+- Round Quantity area on some non-rectangular shapes, and tile count with a backout; see
+  the residual list in "Gridded areas and Round Quantity".
+- Round Quantity on linear conditions (seen on 4 linear conditions) is not checked yet.
+- Codes with no data in the sample: linear 6, 7, 8; count 26. Attachments (area AA, AL, AV) have no rows either.
+>>>>>>> refs/heads/worktree-agent-grid-area
 - Whether openings change linear results other than length and side areas, whether slope
   applies to drops, and whether slope applies to backout areas: no sample row tells.
 - UOM code 1: a length unit used only for count Total Height.

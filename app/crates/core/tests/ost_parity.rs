@@ -7,7 +7,10 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use rea_core::area::{area_results, slope_factor, tile_count_average, AreaShape};
+use rea_core::area::{
+    area_results, grid_length, grid_tile_count, rounded_perimeter, rounded_ring, slope_factor,
+    tile_count_average, AreaShape, Grid,
+};
 use rea_core::count::{count_results, CountDims, CountShape};
 use rea_core::linear::{
     linear_results, ost_segment, points_inside, LinearInput, Opening, Point, Slope,
@@ -188,6 +191,12 @@ fn results(d: &Data, c: &Row, ts: &[&Row]) -> HashMap<u32, Option<f64>> {
         }
         "1" => {
             let f = slope_factor(rise, run);
+            // Round Quantity: edges rounded up to RoundUp inches (area and perimeter only).
+            let step = if s(c, "RoundQuantity") == "1" {
+                num(c, "RoundUp")
+            } else {
+                0.0
+            };
             for t in ts.iter().filter(|t| s(t, "ParentUID").is_empty()) {
                 let outer = pairs(&nums(t));
                 // A backout counts with its parent, whatever condition it sits in.
@@ -197,24 +206,42 @@ fn results(d: &Data, c: &Row, ts: &[&Row]) -> HashMap<u32, Option<f64>> {
                     .map(|k| pairs(&nums(k)))
                     .collect();
                 let refs: Vec<&[(f64, f64)]> = rings.iter().map(Vec::as_slice).collect();
-                let r = area_results(
+                let shape = AreaShape {
+                    outer: &outer,
+                    backouts: &refs,
+                };
+                let rounded = (step > 0.0).then(|| rounded_ring(&outer, step));
+                let mut r = area_results(
                     &AreaShape {
-                        outer: &outer,
+                        outer: rounded.as_deref().unwrap_or(&outer),
                         backouts: &refs,
                     },
                     1.0,
                     num(c, "Thickness"),
                     f,
                 );
+                if step > 0.0 {
+                    let bl = r.perimeter - r.perimeter_without_backouts;
+                    r.perimeter_without_backouts = rounded_perimeter(&outer, step);
+                    r.perimeter = r.perimeter_without_backouts + bl;
+                }
                 let tiles = tile_count_average(r.area, num(c, "GridSize1"), num(c, "GridSize2"));
+                let grid = Grid {
+                    size_x: num(c, "GridSize1"),
+                    size_y: num(c, "GridSize2"),
+                    gap: num(c, "Gap"),
+                    offset: (num(t, "GridOffsetX"), num(t, "GridOffsetY")),
+                    rotation: num(t, "GridRotation"),
+                };
                 let k = sign(t);
                 for (code, v) in [
                     (11, Some(r.area)),
                     (12, Some(r.area)), // minus attachments; attachments not modeled
                     (14, Some(r.perimeter_without_backouts)),
                     (15, Some(r.perimeter)),
-                    (16, None), // grid length: origin convention unknown
+                    (16, Some(grid_length(&shape, &grid))),
                     (17, Some(tiles)),
+                    (18, Some(grid_tile_count(&shape, &grid) as f64)),
                     (19, Some(1.0)),
                     (21, Some(r.volume)),
                     (33, Some(r.perimeter)), // plus attachments; attachments not modeled
