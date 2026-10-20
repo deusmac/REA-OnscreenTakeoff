@@ -232,9 +232,14 @@ Anything a non-developer will use gets, before it is called finished:
   SF, SF and perimeter, EA) from our core math (`desktop/src/quantities.rs`, one test).
   Verified on the real Sweat 440 job: 33 pages, 36 conditions, takeoffs sit exactly on the
   walls of A-1.0 (`docs/screens/m2-osp-*.png`).
-- Next: Summary still lacks zones, typical groups, Round Quantity, drops and openings (the
-  parity harness has them; move into core); TIFF plan pages show blank; editing takeoffs;
-  QuickBid bid-total formula.
+- OST total rules moved into `crates/core/src/ost_totals.rs` (`bid_totals`,
+  `condition_totals`, `display_unit`); the parity harness and the desktop Summary both call
+  it, parity unchanged at 46,089 of 46,173. Summary shows Qty 1 to 3 with OST's units
+  (`docs/screens/m2-summary-full.png`). The .osp XML carries no stored totals and its zone
+  and typical-area sections are empty in all 37 packages, so those rules are untested on
+  packages (they work on the databases).
+- Next: TIFF plan pages show blank; attachments, Round Quantity on linear, typical-page
+  repeats not modeled; editing takeoffs (M3/M4); QuickBid bid-total formula.
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`
