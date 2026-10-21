@@ -62,6 +62,10 @@ pub fn new_from_pdf(pdf: &Path) -> Result<Doc, String> {
     ))
 }
 
+/// Name of the `.reaproj` extra holding an imported OST job's own fields (arcs, grids, zones,
+/// typical areas, parent links, result codes), so a saved import keeps OST's numbers.
+const OST_EXTRA: &str = "ost_source";
+
 pub fn open_reaproj(path: &Path) -> Result<Doc, String> {
     let s = Store::open(path).map_err(|e| e.to_string())?;
     let err = |e: rea_store::StoreError| e.to_string();
@@ -69,6 +73,9 @@ pub fn open_reaproj(path: &Path) -> Result<Doc, String> {
     doc.conditions = s.load_conditions().map_err(err)?;
     doc.takeoffs = s.load_takeoffs().map_err(err)?;
     doc.bid_areas = s.load_bid_areas().map_err(err)?;
+    if let Some(ost) = s.load_extra::<OstSource>(OST_EXTRA).map_err(err)? {
+        doc.ost = ost;
+    }
     Ok(doc)
 }
 
@@ -185,7 +192,11 @@ pub fn save(doc: &mut Doc, path: &Path, unpacked: Option<&Path>) -> Result<(), S
         s.save_pages(&doc.pages)?;
         s.save_conditions(&doc.conditions)?;
         s.save_bid_areas(&doc.bid_areas)?;
-        s.save_takeoffs(&doc.takeoffs)
+        s.save_takeoffs(&doc.takeoffs)?;
+        if doc.ost != OstSource::default() {
+            s.save_extra(OST_EXTRA, &doc.ost)?;
+        }
+        Ok(())
     };
     if let Err(e) = write() {
         let _ = std::fs::remove_file(&part);
@@ -222,6 +233,31 @@ mod tests {
             assert_eq!(a.qty, b.qty);
         }
         assert_eq!(after.len(), 3);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Real job from JC's corpus (not in the repo): run with `-- --ignored`.
+    #[test]
+    #[ignore]
+    fn saved_ost_job_keeps_exact_totals() {
+        let dir = Path::new(r"E:\opentakeoff-study\corpus\ost");
+        let osp = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .find(|p| p.to_string_lossy().contains("Sweat_440"))
+            .unwrap();
+        let (mut d, tmp) = open_ost(&osp).unwrap();
+        let before = d.summary();
+        let path = std::env::temp_dir().join("opentakeoff_ost_round_trip.reaproj");
+        let _ = std::fs::remove_file(&path);
+        save(&mut d, &path, Some(&tmp)).unwrap();
+        let r = open_reaproj(&path).unwrap();
+        assert_eq!(r.ost, d.ost);
+        let after = r.summary();
+        assert_eq!(before.len(), after.len());
+        for (a, b) in before.iter().zip(&after) {
+            assert_eq!(a.qty, b.qty);
+        }
         let _ = std::fs::remove_file(&path);
     }
 

@@ -189,7 +189,7 @@ const PALETTE: [[u8; 3]; 8] = [
 /// OST fields of an imported job. While a takeoff's geometry and a condition's results are
 /// what was imported, totals use OST's stored positions and codes, so an opened OST job
 /// shows OST's own numbers; after an edit they come from our geometry.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OstSource {
     pub conditions: HashMap<Id, ([Option<ResultKind>; 3], OstCondition)>,
     pub takeoffs: HashMap<Id, (Geometry, OstTakeoff)>,

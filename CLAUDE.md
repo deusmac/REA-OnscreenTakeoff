@@ -17,9 +17,26 @@ to read only section 0 and know exactly where things stand.
   On-Screen Takeoff (OST) feature set, later joined by a QuickBid-style bidding module, in
   one application for JC's estimating work. Goal: one-to-one parity, and full compatibility
   with OST and QuickBid project files (open their jobs, same numbers).
-- **Current phase:** Phase 1. M0 and M1 (plan viewer) done; core math, data model, SQLite
-  store and Excel export landed as libraries (55 tests). Specs: `docs/spec/ost-features.md`
-  and `docs/spec/quickbid-features.md`, evidence ledger in `docs/study/`.
+- **Current phase:** Phase 1 nearly done. Built and verified: M0 to M4 (plan viewer, open
+  OST .osp jobs, conditions, draw and edit linear/area/count takeoffs, page scale, undo,
+  .reaproj save/open), OST quantity rules matching 99.82% of 46,173 stored OST quantities,
+  OST and QuickBid file readers. Not yet built: Excel export in the UI (library exists),
+  QuickBid pricing math, TIFF pages, backouts drawing, snap, multi-select.
+- **Integration with Pantheon (JC's Rust takeoff tool):** `docs/integration/pantheon.md`
+  explains how to pull `rea-core`, `rea-ost`, `rea-quickbid` by git (pin a commit), the
+  units, the APIs and the parity test. Read it before touching integration.
+- **Crates in `app/`:** `crates/core` (model, scale, linear, area, count, summary,
+  `ost_totals`), `crates/ost` (.osp/.ost reader), `crates/quickbid` (.qbp reader),
+  `crates/pdf` (Pdfium), `crates/store` (.reaproj SQLite, schema v2), `crates/export`
+  (xlsx), `desktop` (egui app: doc, geom, project, tools, viewer, conditions_ui).
+- **Knowledge docs:** specs `docs/spec/*.md`, ledgers `docs/study/ost|qb/*.md`, file formats
+  and quantity rules `docs/study/formats/ost-package.md`, `ost-quantities.md`,
+  `quickbid-package.md`.
+- **Test data (outside the repo, client data, never commit):** copies of all of
+  `C:\OCS Documents` in `E:\opentakeoff-study\corpus` (38 .osp, 17 .qbp, 115 .mdb);
+  answer keys per OST database in `E:\opentakeoff-study\answer-keys\<db>\` (run the parity
+  test with `$env:OST_ANSWER_KEY` set to a folder); M3 test project
+  `E:\opentakeoff-study\m3-test\test.reaproj`.
 - **Stack:** Rust (JC's decision, 2026-10-16). Rust core for geometry, scale and quantity
   math; PDF renderer and desktop UI to be chosen in the Phase 1 plan.
 - **Method (clean-room evidence loop):** ledger IDs per behavior, unknowns register,
@@ -28,27 +45,37 @@ to read only section 0 and know exactly where things stand.
 - **Where the work lives:** GitHub `deusmac/REA-OnscreenTakeoff`, branch
   `claude/rea-tools-software-analysis-rk9nak`. No PR yet. Working copy on JC's Windows PC
   is cloned from that branch.
-- **How to run it:** double-click `run.bat` in the repo root (builds release, then opens
-  the OpenTakeoff window; a PDF path as argument opens it). Code lives in `app/` (Cargo workspace: `crates/core`, `store`,
-  `pdf`, `export`, and `desktop`).
+- **How to run it:** double-click `run.bat` in the repo root (builds release to
+  `E:\cargo-targets\opentakeoff`, copies pdfium.dll, opens OpenTakeoff). A path argument
+  opens a PDF, an OST `.osp`, or a `.reaproj`. Controls: left mouse draws with the armed
+  condition (double-click or Enter finishes, Esc cancels, Backspace undoes a point), V or
+  Esc selects, Delete removes, drag a vertex to move, right/middle drag and wheel pan,
+  Ctrl+wheel zoom, Ctrl+Z/Ctrl+Y, Ctrl+S, Ctrl+N new from PDF, Ctrl+O open.
 - **How to verify changes:** in `app/`: `cargo test --workspace`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check`,
   then run `run.bat` and screenshot the window (`docs/screens/`).
-- **Last session did:** (PC session, 2026-10-16) Downloaded every public article of both
-  user guides (from the site sitemap, to the session scratchpad only, never committed),
-  extracted paraphrased ledgers with 10 parallel readers, rewrote the OST spec and wrote
-  the QuickBid spec. Ran an overlap check (no copied prose in committed docs).
+- **Last session did:** (PC, 2026-10-20 to 10-22) see section 9 "Session 4". Ended with
+  the Pantheon integration guide and work in progress on storing OST fields in .reaproj.
+- **Work in progress when stopped (2026-10-22):** `.reaproj` schema v2 adds an `extra`
+  table (`Store::save_extra/load_extra`); the desktop saves the imported OST data
+  (`doc.ost`, struct `OstSource`) there as JSON under `ost_source` and loads it on open,
+  so an `.osp` saved as `.reaproj` keeps OST's exact numbers. Serde derives were added to
+  `OstCondition`, `OstTakeoff`, `ZoneOutline`, `TypAreaCount` and `OstSource`. Workspace
+  tests pass; the real-job check is the ignored test `saved_ost_job_keeps_exact_totals`
+  (`cargo test -p rea-desktop -- --ignored`, needs the E: corpus). Commit state: see the
+  last commit message on the branch.
 - **Next up (priority order):**
-  1. JC: export one real past job from OST (Summary and Estimate grids to Excel) and the
-     same job from QuickBid (bid summary, job cost summary, job data export), plus its plan
-     PDFs, into `reference/`. Closes the Unknowns registers and is the verification
-     baseline.
-  2. OST and QuickBid file compatibility: JC's job files are in `C:\OCS Documents` (OST
-     `.mdb` and `.osp`, QuickBid `.qbp`). Map the formats from copies, write the format
-     notes in `docs/study/formats/`, then build importers.
-  3. M2 (project, pages, scale UI) wired to the new store and core modules. See
-     `docs/plan/phase-1-rust.md`.
-  4. Optional: training videos to close unknowns the guides do not cover.
+  1. Confirm `saved_ost_job_keeps_exact_totals` passes, then commit if not already.
+  2. Pantheon integration (JC's priority): follow `docs/integration/pantheon.md`; ask JC
+     for the Pantheon repo and wire the crates in.
+  3. Excel export button in the app (library `crates/export` exists) so JC can export
+     quantities like OST's Summary.
+  4. QuickBid pricing: work out how BidTotal is built (conditions, markups, equipment,
+     others, BidMU tables) from the 17 .qbp jobs; condition mat+lab is 75 to 100% of it.
+  5. Remaining OST gaps: attachments (area codes 12, 33), Round Quantity on linear,
+     typical page repeats, TIFF pages, backouts and snap in the drawing tools.
+  6. JC: one reference export of a real job (OST Summary and Estimate to Excel, QuickBid
+     bid summary) into `reference/` would let us check the displayed numbers end to end.
 - **Landmines:**
   - Read section 5 clean-room rules before touching OST or QuickBid in any way.
   - JC's PC has a machine-wide `CARGO_TARGET_DIR` pointing at another project
@@ -66,6 +93,18 @@ to read only section 0 and know exactly where things stand.
     our paraphrased ledgers and specs.
   - JC asked that OST study NOT drive his PC (no Windows-MCP, computer-use, desktop
     screenshots, or launching OST). Use public docs and YouTube only.
+  - Testing our own app with synthetic mouse input once sent clicks into JC's QuickBid
+    window. Only click when GetForegroundWindow is our window; capture only our window
+    rect, never the full screen (his mail is on screen). PrintWindow returns black for our
+    GPU window, and Windows may refuse to bring it to front; then stop and rely on tests.
+  - Subagent worktrees under `.claude/worktrees` vanish after a session-limit resume; tell
+    agents to commit often. Agents hit the usage limit several times; resume them with
+    SendMessage instead of starting new ones.
+  - The edit hook (GateGuard) blocks the first edit of each file until its four facts are
+    stated; a blocked edit in a batch is silently skipped, so re-check it landed (one merge
+    once committed conflict markers this way).
+  - Never commit `.ost` employee data: packages carry an Employee record with a Password
+    attribute; importers skip it.
 
 ## 1. Who you are working for
 
@@ -248,10 +287,13 @@ Anything a non-developer will use gets, before it is called finished:
   no ..), `project::local_plan_path`.
 - Broke: during the real-app test some synthetic clicks landed in JC's QuickBid window;
   JC told to check that job. Drive the app only when it is verified to be in front.
-- Next: .reaproj does not yet store arcs, grid sizes, zones, typical areas, parent links
-  and unnamed result codes, so an .osp saved as .reaproj drifts on those rows; backouts,
-  snap, rectangle drag, multi-select, copy/move not built; TIFF pages blank; QuickBid
-  bid-total formula.
+- 2026-10-22: Pantheon integration guide written (`docs/integration/pantheon.md`). Started
+  storing imported OST data in .reaproj (schema v2 `extra` table, `ost_source` JSON); JC
+  asked to stop and write everything down before it was fully verified (see section 0
+  "Work in progress").
+- Cost note: this session ran over $500, mostly Opus subagents; prefer Sonnet agents for
+  planned work.
+- Next: see section 0 "Next up".
 
 ### 2026-10-16 - Session 3 (PC)
 - Shipped: `docs/spec/ost-features.md` second draft and `docs/spec/quickbid-features.md`

@@ -13,7 +13,7 @@ use rusqlite::{params, Connection, OpenFlags, Transaction};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Schema version this build writes.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -111,6 +111,14 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
              INSERT INTO schema_version (version) VALUES (1);",
         )?;
     }
+    if current < 2 {
+        // Named JSON blobs for data the tables have no columns for (an imported OST job's
+        // own fields), so a saved import keeps its exact numbers.
+        tx.execute_batch(
+            "CREATE TABLE extra (name TEXT PRIMARY KEY, json TEXT NOT NULL);
+             INSERT INTO schema_version (version) VALUES (2);",
+        )?;
+    }
     tx.commit()?;
     Ok(())
 }
@@ -149,6 +157,27 @@ impl Store {
         Ok(self
             .conn
             .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))?)
+    }
+
+    /// Stores `value` as JSON under `name`, replacing any earlier value.
+    pub fn save_extra<T: Serialize>(&mut self, name: &str, value: &T) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO extra (name, json) VALUES (?1, ?2)
+             ON CONFLICT(name) DO UPDATE SET json = ?2",
+            params![name, json(value)?],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_extra<T: DeserializeOwned>(&self, name: &str) -> Result<Option<T>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT json FROM extra WHERE name = ?1")?;
+        let mut rows = st.query(params![name])?;
+        match rows.next()? {
+            Some(r) => Ok(Some(unjson(&r.get::<_, String>(0)?)?)),
+            None => Ok(None),
+        }
     }
 
     pub fn save_project(&mut self, p: &Project) -> Result<()> {
@@ -654,7 +683,10 @@ mod tests {
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
         drop(conn);
-        assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 1);
+        assert_eq!(
+            Store::open(&path).unwrap().schema_version().unwrap(),
+            SCHEMA_VERSION
+        );
     }
 
     #[test]

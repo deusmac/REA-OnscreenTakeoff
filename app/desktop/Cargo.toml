@@ -12,6 +12,8 @@ rea-ost = { version = "0.1.0", path = "../crates/ost" }
 rea-pdf = { version = "0.1.0", path = "../crates/pdf" }
 rea-store = { version = "0.1.0", path = "../crates/store" }
 rfd = "0.17.2"
+serde = { version = "1", features = ["derive"] }
 
 [lints]
 workspace = true
+

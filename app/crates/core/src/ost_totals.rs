@@ -28,7 +28,7 @@ pub const ATTACHED_COUNT: i64 = 3;
 pub const COUNT_POINT: i64 = 4;
 
 /// A condition with the OST fields that feed totals. Lengths in inches.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OstCondition {
     pub uid: Id,
     /// `Type`: see the constants above.
@@ -59,7 +59,7 @@ pub struct OstCondition {
 }
 
 /// A takeoff with its raw OST fields. `None` stands for OST's empty or 0 UID.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OstTakeoff {
     pub uid: Id,
     pub page: Id,
@@ -81,7 +81,7 @@ pub struct OstTakeoff {
 }
 
 /// A zone region drawn on a page (stored by OST as a takeoff with a zone and no condition).
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ZoneOutline {
     pub zone: Id,
     pub page: Id,
@@ -90,7 +90,7 @@ pub struct ZoneOutline {
 }
 
 /// How many copies of a typical area a bid area holds (`BidTypAreaCounts`).
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypAreaCount {
     pub area: Id,
     pub typ_area: Id,

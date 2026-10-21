@@ -2857,6 +2857,7 @@ dependencies = [
  "rea-pdf",
  "rea-store",
  "rfd",
+ "serde",
 ]
 
 [[package]]
