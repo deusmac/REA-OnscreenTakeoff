@@ -62,8 +62,13 @@ to read only section 0 and know exactly where things stand.
   so an `.osp` saved as `.reaproj` keeps OST's exact numbers. Serde derives were added to
   `OstCondition`, `OstTakeoff`, `ZoneOutline`, `TypAreaCount` and `OstSource`. Workspace
   tests pass; the real-job check is the ignored test `saved_ost_job_keeps_exact_totals`
-  (`cargo test -p rea-desktop -- --ignored`, needs the E: corpus). Commit state: see the
-  last commit message on the branch.
+  (`cargo test -p rea-desktop -- --ignored`, needs the E: corpus). It FAILS today at
+  `assert_eq!(r.ost, d.ost)` (project.rs, the OstSource reloaded is not equal to the one
+  saved). Likely cause, not yet proven: serde_json without its `float_roundtrip` feature
+  can change the last digit of an f64 on read. First thing to try: enable
+  `serde_json = { version = "1", features = ["float_roundtrip"] }` in
+  `app/crates/store/Cargo.toml`, rerun the ignored test, and if it still fails, diff the two
+  structs field by field. Everything is committed and pushed (6c0bd2c and later).
 - **Next up (priority order):**
   1. Confirm `saved_ost_job_keeps_exact_totals` passes, then commit if not already.
   2. Pantheon integration (JC's priority): follow `docs/integration/pantheon.md`; ask JC
